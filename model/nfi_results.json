@@ -1,0 +1,31 @@
+{
+  "rule_engine": {
+    "prevented_fraud_value": 131339.35199999998,
+    "prevented_chargebacks": 22675.0,
+    "fp_friction_cost": 312625.0,
+    "fp_lost_revenue": 1971957.0424000002,
+    "missed_chargebacks": 18775.0,
+    "missed_fraud_loss": 91085.782,
+    "nfi": -2130567.6904,
+    "true_positives": 907,
+    "false_positives": 12505,
+    "false_negatives": 751,
+    "precision": 0.0676260065612884,
+    "recall": 0.5470446320868516
+  },
+  "ml_detector": {
+    "prevented_fraud_value": 63635.69500000001,
+    "prevented_chargebacks": 14400.0,
+    "fp_friction_cost": 3225.0,
+    "fp_lost_revenue": 13504.2696,
+    "missed_chargebacks": 27050.0,
+    "missed_fraud_loss": 158789.439,
+    "nfi": 61306.42540000001,
+    "true_positives": 576,
+    "false_positives": 129,
+    "false_negatives": 1082,
+    "precision": 0.8170212765957446,
+    "recall": 0.3474065138721351
+  },
+  "improvement": 2191874.1158000003
+}

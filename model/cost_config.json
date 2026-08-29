@@ -1,0 +1,7 @@
+{
+  "false_positive_friction_cost": 25.0,
+  "lost_revenue_fraction": 0.8,
+  "chargeback_fee": 25.0,
+  "fraud_loss_fraction": 1.0,
+  "threshold": 0.5
+}

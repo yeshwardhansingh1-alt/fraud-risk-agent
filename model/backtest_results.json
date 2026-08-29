@@ -1,0 +1,40 @@
+{
+  "classification_metrics": {
+    "threshold": 0.5,
+    "precision": 0.8170212765957446,
+    "recall": 0.3474065138721351,
+    "roc_auc": 0.8594863075693779,
+    "pr_auc": 0.5022856321704652,
+    "n_total": 40000,
+    "n_fraud": 1658,
+    "n_predicted_fraud": 705,
+    "true_negatives": 38213,
+    "false_positives": 129,
+    "false_negatives": 1082,
+    "true_positives": 576
+  },
+  "cost_metrics": {
+    "threshold": 0.5,
+    "n_transactions": 40000,
+    "n_fraud": 1658,
+    "n_predicted_fraud": 705,
+    "true_positives": 576,
+    "false_positives": 129,
+    "false_negatives": 1082,
+    "true_negatives": 38213,
+    "precision": 0.8170212765957446,
+    "recall": 0.3474065138721351,
+    "fp_friction_cost": 3225.0,
+    "fp_lost_revenue": 13504.2696,
+    "total_false_positive_cost": 16729.2696,
+    "fn_chargeback_fees": 27050.0,
+    "fn_fraud_loss": 158789.439,
+    "total_missed_fraud_cost": 185839.439,
+    "prevented_fraud_value": 63635.69500000001,
+    "prevented_chargeback_fees": 14400.0,
+    "net_savings": 61306.42540000001,
+    "total_cost": 202568.7086,
+    "false_positive_cost_per_1000_txn": 418.23173999999995,
+    "missed_fraud_cost_per_1000_txn": 4645.9859750000005
+  }
+}
