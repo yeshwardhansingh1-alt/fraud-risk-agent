@@ -18,6 +18,7 @@ import os
 import sys
 
 from model.cost_model import COST_CONFIG
+from agent.expected_loss import argmin_action, cfraud, clegit
 
 MODEL_DIR = os.path.dirname(__file__)
 FEATURES_DIR = os.path.join(os.path.dirname(__file__), "..", "features")
@@ -60,6 +61,8 @@ def compute_nfi(y_true, y_pred, amounts, config=None):
 
     nfi = (prevented_fraud_value + prevented_chargebacks) - (fp_friction + fp_lost_revenue)
 
+    nfi = (prevented_fraud_value + prevented_chargebacks) - (fp_friction + fp_lost_revenue)
+
     return {
         "prevented_fraud_value": float(prevented_fraud_value),
         "prevented_chargebacks": float(prevented_chargebacks),
@@ -73,6 +76,49 @@ def compute_nfi(y_true, y_pred, amounts, config=None):
         "false_negatives": int(fn.sum()),
         "precision": float(tp.sum() / (tp.sum() + fp.sum())) if (tp.sum() + fp.sum()) > 0 else 0,
         "recall": float(tp.sum() / (tp.sum() + fn.sum())) if (tp.sum() + fn.sum()) > 0 else 0,
+    }
+
+
+def compute_agent_nfi(y_true, y_pred_proba, amounts):
+    """
+    Compute Net Financial Impact using the full 4-action Decision Agent policy.
+    NFI = (Loss under Approve-All) - (Loss under Agent Policy)
+    """
+    total_approve_all_loss = 0.0
+    total_agent_loss = 0.0
+    
+    prevented_fraud_value = 0.0
+    fp_cost = 0.0
+
+    actions = []
+    
+    for p_fraud, y, amt in zip(y_pred_proba, y_true, amounts):
+        # Baseline loss (Approve everything)
+        baseline_loss = cfraud("approve", amt) if y == 1 else clegit("approve", amt)
+        total_approve_all_loss += baseline_loss
+        
+        # Agent loss
+        best_action, _ = argmin_action(p_fraud, amt)
+        actions.append(best_action)
+        agent_loss = cfraud(best_action, amt) if y == 1 else clegit(best_action, amt)
+        total_agent_loss += agent_loss
+        
+        # Approximate metrics for plotting parity
+        savings = baseline_loss - agent_loss
+        if y == 1 and savings > 0:
+            prevented_fraud_value += savings
+        elif y == 0 and savings < 0:
+            fp_cost += abs(savings)
+            
+    nfi = total_approve_all_loss - total_agent_loss
+    
+    return {
+        "prevented_fraud_value": float(prevented_fraud_value),
+        "prevented_chargebacks": 0.0, # Merged into value for agent
+        "fp_friction_cost": float(fp_cost),
+        "fp_lost_revenue": 0.0,
+        "nfi": float(nfi),
+        "actions": pd.Series(actions).value_counts().to_dict()
     }
 
 
@@ -166,34 +212,29 @@ if __name__ == "__main__":
     logger.info(f"\nRule Engine NFI: ${baseline_nfi['nfi']:,.2f}")
     logger.info(f"  Precision: {baseline_nfi['precision']:.4f}, Recall: {baseline_nfi['recall']:.4f}")
 
-    # --- ML Detector ---
-    logger.info("\nLoading ML model predictions...")
+    logger.info("\nLoading ML model predictions and applying Agent Logic...")
     calibrated_model = joblib.load(os.path.join(MODEL_DIR, "calibrated_model.pkl"))
-    with open(os.path.join(MODEL_DIR, "cost_config.json")) as f:
-        cost_config = json.load(f)
-    opt_threshold = cost_config.get("threshold", 0.5)
-
     y_pred_proba = calibrated_model.predict_proba(test[feature_cols])[:, 1]
-    ml_preds = (y_pred_proba >= opt_threshold).astype(int)
-    ml_nfi = compute_nfi(y_true, ml_preds, amounts)
+    
+    agent_nfi = compute_agent_nfi(y_true, y_pred_proba, amounts)
 
-    logger.info(f"\nML Detector NFI: ${ml_nfi['nfi']:,.2f}")
-    logger.info(f"  Precision: {ml_nfi['precision']:.4f}, Recall: {ml_nfi['recall']:.4f}")
+    logger.info(f"\nDecision Agent NFI: ${agent_nfi['nfi']:,.2f}")
+    logger.info(f"  Actions taken: {agent_nfi['actions']}")
 
     # --- Comparison ---
-    improvement = ml_nfi["nfi"] - baseline_nfi["nfi"]
+    improvement = agent_nfi["nfi"] - baseline_nfi["nfi"]
     logger.info(f"\n{'='*60}")
-    logger.info(f"NFI Improvement (ML over Rules): ${improvement:,.2f}")
+    logger.info(f"NFI Improvement (Agent over Rules): ${improvement:,.2f}")
     logger.info(f"{'='*60}")
 
     # Plot comparison
     os.makedirs(PLOTS_DIR, exist_ok=True)
-    plot_nfi_comparison(baseline_nfi, ml_nfi, os.path.join(PLOTS_DIR, "nfi_comparison.png"))
+    plot_nfi_comparison(baseline_nfi, agent_nfi, os.path.join(PLOTS_DIR, "nfi_comparison.png"))
 
     # Save results
     results = {
         "rule_engine": baseline_nfi,
-        "ml_detector": ml_nfi,
+        "ml_detector": agent_nfi,
         "improvement": float(improvement),
     }
     with open(os.path.join(MODEL_DIR, "nfi_results.json"), "w") as f:
