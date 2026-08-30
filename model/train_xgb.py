@@ -47,7 +47,7 @@ def train_xgboost():
         "eval_metric": ["auc", "aucpr"],
         "max_depth": 6,
         "learning_rate": 0.05,
-        "n_jobs": -1,
+        "nthread": -1,
         "scale_pos_weight": (len(y_train) - sum(y_train)) / sum(y_train)
     }
     

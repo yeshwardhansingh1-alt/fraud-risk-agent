@@ -106,7 +106,7 @@ def test_expected_loss():
 
     logger.info("Unit test: E[Loss(a|X)] argmin behavior")
     logger.info(f"  Transaction value: ${V}")
-    logger.info()
+    logger.info("")
 
     # At very low p_fraud, Approve should win
     best, losses = argmin_action(0.001, V)

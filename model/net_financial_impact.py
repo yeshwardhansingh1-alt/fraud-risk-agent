@@ -156,7 +156,7 @@ if __name__ == "__main__":
 
     # --- Rule Engine Baseline (Day 5) ---
     logger.info("\nLoading rule engine outputs...")
-    rule_outputs = pd.read_parquet(os.path.join(FEATURES_DIR, "rule_engine_outputs.csv"))
+    rule_outputs = pd.read_csv(os.path.join(FEATURES_DIR, "rule_engine_outputs.csv"))
     # Merge on TransactionID to align with test set
     test_with_rules = test.merge(rule_outputs[["TransactionID", "rule_any_fired"]],
                                   on="TransactionID", how="left")
@@ -169,8 +169,12 @@ if __name__ == "__main__":
     # --- ML Detector ---
     logger.info("\nLoading ML model predictions...")
     calibrated_model = joblib.load(os.path.join(MODEL_DIR, "calibrated_model.pkl"))
+    with open(os.path.join(MODEL_DIR, "cost_config.json")) as f:
+        cost_config = json.load(f)
+    opt_threshold = cost_config.get("threshold", 0.5)
+
     y_pred_proba = calibrated_model.predict_proba(test[feature_cols])[:, 1]
-    ml_preds = (y_pred_proba >= 0.5).astype(int)
+    ml_preds = (y_pred_proba >= opt_threshold).astype(int)
     ml_nfi = compute_nfi(y_true, ml_preds, amounts)
 
     logger.info(f"\nML Detector NFI: ${ml_nfi['nfi']:,.2f}")

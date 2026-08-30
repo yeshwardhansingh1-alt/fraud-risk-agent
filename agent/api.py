@@ -28,6 +28,7 @@ from slowapi.errors import RateLimitExceeded
 
 
 from agent.expected_loss import argmin_action
+from agent.monitoring import check_prediction_drift
 from model.wrappers import CustomCalibratedClassifier, LGBMWrapper
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "model")
@@ -63,7 +64,8 @@ async def lifespan(app: FastAPI):
     test_start = train_size + val_size
     
     # Read a small chunk from the test set for realistic backgrounds
-    df = pd.read_parquet(os.path.join(FEATURES_DIR, "modeling_table.parquet"), skiprows=range(1, test_start), nrows=100)
+    df = pd.read_parquet(os.path.join(FEATURES_DIR, "modeling_table.parquet"))
+    df = df.iloc[test_start:test_start + 100]
     baseline_txns = df[feature_cols].copy()
     
     logger.info(f"Loaded {len(feature_cols)} features and initialized native explainability.")
@@ -329,3 +331,25 @@ async def get_scenarios():
 @app.get("/health")
 async def health():
     return {"status": "healthy", "model_loaded": calibrated_model is not None}
+
+@app.post("/monitor/drift", dependencies=[Depends(verify_api_key)])
+async def monitor_drift(txns: List[TransactionInput]):
+    """Calculate prediction drift PSI for a batch of new transactions vs training baseline."""
+    if not txns:
+        return {"status": "no_data"}
+        
+    features_2d = np.array([[txn.features.get(col, 0) for col in feature_cols] for txn in txns])
+    production_probs = calibrated_model.predict_proba(features_2d)[:, 1]
+    
+    # In a real system, you'd load the reference from a static file. 
+    # For now, we mock reference probs from a uniform dist or small slice of test set.
+    # To be realistic, let's just score the baseline txns to get reference probs.
+    ref_features_2d = baseline_txns.values
+    reference_probs = calibrated_model.predict_proba(ref_features_2d)[:, 1]
+    
+    is_drifting = check_prediction_drift(pd.Series(reference_probs), pd.Series(production_probs))
+    
+    return {
+        "drift_detected": bool(is_drifting),
+        "message": "Drift detected!" if is_drifting else "Predictions are stable."
+    }

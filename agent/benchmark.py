@@ -58,7 +58,7 @@ def benchmark(requests_list, n_warmup=10):
     logger.info(f"  Warming up ({n_warmup} requests)...")
     for req in requests_list[:n_warmup]:
         try:
-            requests.post(f"{API_URL}/predict", json=req, timeout=5)
+            requests.post(f"{API_URL}/predict", json=req, headers={"X-API-Key": "default-dev-key"}, timeout=5)
         except Exception as e:
             logger.info(f"  Warmup error: {e}")
             return None
@@ -70,7 +70,7 @@ def benchmark(requests_list, n_warmup=10):
     for i, req in enumerate(requests_list):
         start = time.perf_counter()
         try:
-            response = requests.post(f"{API_URL}/predict", json=req, timeout=5)
+            response = requests.post(f"{API_URL}/predict", json=req, headers={"X-API-Key": "default-dev-key"}, timeout=5)
             elapsed_ms = (time.perf_counter() - start) * 1000
             if response.status_code == 200:
                 latencies.append(elapsed_ms)

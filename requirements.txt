@@ -12,9 +12,9 @@ uvicorn==0.32.0
 streamlit==1.40.1
 requests==2.32.3
 pydantic==2.9.2
-optuna
-pandera
-pyarrow
-slowapi
-redis
-xgboost
+optuna==4.9.0
+pandera==0.33.0
+pyarrow==25.0.1
+slowapi==0.1.10
+redis==5.3.1
+xgboost==3.4.1

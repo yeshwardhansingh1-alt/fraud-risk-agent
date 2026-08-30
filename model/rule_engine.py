@@ -113,6 +113,5 @@ if __name__ == "__main__":
     out_path = os.path.join(FEATURES_DIR, "rule_engine_outputs.csv")
     rule_cols = ["TransactionID", "rule_decision", "rule_any_fired"] + \
                 [f"rule_{name}" for name, _ in ALL_RULES]
-    df[rule_cols].to_parquet(out_path, index=False)
+    df[rule_cols].to_csv(out_path, index=False)
     logger.info(f"\nSaved rule engine outputs to: {out_path}")
-

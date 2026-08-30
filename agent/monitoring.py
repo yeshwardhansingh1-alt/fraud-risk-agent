@@ -16,12 +16,6 @@ def calculate_psi(expected: np.ndarray, actual: np.ndarray, buckets: int = 10) -
     """
     Calculate the Population Stability Index (PSI) for a continuous variable.
     """
-    def scale_range (input, min, max):
-        input += -(np.min(input))
-        input /= np.max(input) / (max - min)
-        input += min
-        return input
-
     breakpoints = np.arange(0, buckets + 1) / (buckets) * 100
     breakpoints = np.percentile(expected, breakpoints)
     

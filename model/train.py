@@ -232,7 +232,7 @@ if __name__ == "__main__":
         "importance_gain": model.feature_importance(importance_type="gain"),
         "importance_split": model.feature_importance(importance_type="split")
     }).sort_values("importance_gain", ascending=False)
-    importance_df.to_parquet(os.path.join(MODEL_DIR, "feature_importance.csv"), index=False)
+    importance_df.to_csv(os.path.join(MODEL_DIR, "feature_importance.csv"), index=False)
     
     # Save Plot
     plt.figure(figsize=(10, 8))

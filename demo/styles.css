@@ -186,6 +186,7 @@ header h1 {
 .action-approve { border-color: var(--color-approve); }
 .action-step_up { border-color: var(--color-stepup); }
 .action-block { border-color: var(--color-block); }
+.action-auto_dispute { border-color: var(--color-dispute); }
 
 /* Probability Bar */
 .prob-header {
@@ -313,6 +314,7 @@ header h1 {
 .history-item.approve { border-color: var(--color-approve); }
 .history-item.step_up { border-color: var(--color-stepup); }
 .history-item.block { border-color: var(--color-block); }
+.history-item.auto_dispute { border-color: var(--color-dispute); }
 
 /* Counters */
 .counter-box {
