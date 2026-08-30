@@ -3,5 +3,8 @@
   "lost_revenue_fraction": 0.8,
   "chargeback_fee": 25.0,
   "fraud_loss_fraction": 1.0,
-  "threshold": 0.5
+  "step_up_leakage_rate": 0.25,
+  "step_up_friction_cost": 5.0,
+  "dispute_processing_fee": 10.0,
+  "threshold": 0.32000000000000006
 }

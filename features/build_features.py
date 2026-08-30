@@ -2,19 +2,21 @@
 Day 4 — Build Features: merge all engineered features into one modeling table.
 
 Orchestrates velocity, entity graph, and behavioral feature pipelines,
-then produces a single features/modeling_table.csv ready for training.
+then produces a single features/modeling_table.parquet ready for training.
 """
+
+import logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 import numpy as np
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(__file__))
-
-from velocity import build_velocity_features, sanity_check_no_future_leakage
-from entity_graph import build_graph_features_fast
-from behavioral import build_behavioral_features
+from features.velocity import build_velocity_features, sanity_check_no_future_leakage
+from features.entity_graph import build_graph_features_fast
+from features.behavioral import build_behavioral_features
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 FEATURES_DIR = os.path.dirname(__file__)
@@ -23,35 +25,49 @@ FEATURES_DIR = os.path.dirname(__file__)
 def build_all_features():
     """Load raw data, build all features, merge into one table."""
 
+    import pandera as pa
+    from pandera.typing import DataFrame, Series
+
     # --- Load raw data ---
-    print("Loading raw data...")
+    logger.info("Loading raw data...")
     txn = pd.read_csv(os.path.join(DATA_DIR, "train_transaction.csv"))
     ident = pd.read_csv(os.path.join(DATA_DIR, "train_identity.csv"))
+    
+    # Define and apply raw data schema checks
+    logger.info("Validating raw data schema with Pandera...")
+    txn_schema = pa.DataFrameSchema({
+        "TransactionID": pa.Column(int, unique=True, coerce=True),
+        "TransactionDT": pa.Column(int, coerce=True),
+        "TransactionAmt": pa.Column(float, pa.Check.ge(0), coerce=True),
+        "isFraud": pa.Column(int, pa.Check.isin([0, 1]), coerce=True),
+        "card1": pa.Column(int, coerce=True)
+    })
+    
+    txn = txn_schema.validate(txn)
+    
     df = txn.merge(ident, on="TransactionID", how="left")
-    print(f"  Raw merged shape: {df.shape}")
+    logger.info(f"  Raw merged shape: {df.shape}")
 
     # Sort by time — critical for all feature engineering
     df = df.sort_values("TransactionDT").reset_index(drop=True)
     
-    # Downsample to first 200,000 rows to avoid Sandbox memory limits (OutOfMemoryException)
-    df = df.head(200000).copy()
-    print(f"  Downsampled shape for Sandbox: {df.shape}")
+    # (Removed 200k sandbox cap — processing full dataset)
 
     # --- Velocity features (Day 3) ---
-    print("\n--- Velocity Features ---")
+    logger.info("\n--- Velocity Features ---")
     df = build_velocity_features(df)
     sanity_check_no_future_leakage(df)
 
     # --- Entity graph features (Day 4) ---
-    print("\n--- Entity Graph Features ---")
+    logger.info("\n--- Entity Graph Features ---")
     df = build_graph_features_fast(df)
 
     # --- Behavioral features (Day 4) ---
-    print("\n--- Behavioral Features ---")
+    logger.info("\n--- Behavioral Features ---")
     df = build_behavioral_features(df)
 
     # --- Time-based features ---
-    print("\n--- Time Features ---")
+    logger.info("\n--- Time Features ---")
     # Hour of day and day of week (TransactionDT is in seconds from some reference)
     df["hour_of_day"] = (df["TransactionDT"] / 3600 % 24).astype(int)
     df["day_of_week"] = (df["TransactionDT"] / 86400 % 7).astype(int)
@@ -85,18 +101,18 @@ def build_all_features():
 
     modeling_df = df[["TransactionID", "TransactionDT", "isFraud"] + all_feature_cols].copy()
 
-    print(f"\nFinal modeling table shape: {modeling_df.shape}")
-    print(f"  Features: {len(all_feature_cols)}")
-    print(f"  Fraud rate: {modeling_df['isFraud'].mean():.4%}")
+    logger.info(f"\nFinal modeling table shape: {modeling_df.shape}")
+    logger.info(f"  Features: {len(all_feature_cols)}")
+    logger.info(f"  Fraud rate: {modeling_df['isFraud'].mean():.4%}")
 
     # Save
-    out_path = os.path.join(FEATURES_DIR, "modeling_table.csv")
-    modeling_df.to_csv(out_path, index=False, chunksize=10000)
-    print(f"  Saved to: {out_path}")
+    out_path = os.path.join(FEATURES_DIR, "modeling_table.parquet")
+    modeling_df.to_parquet(out_path, index=False, chunksize=10000)
+    logger.info(f"  Saved to: {out_path}")
 
     return modeling_df
 
 
 if __name__ == "__main__":
     build_all_features()
-    print("\nDay 4 feature build complete.")
+

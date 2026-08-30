@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fraud Risk Agent — Live Demo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🛡️ Fraud Risk Agent — Live Checkout Demo</h1>
+      <p>Simulate transactions and watch the AI balance fraud risk against friction costs in real-time.</p>
+    </header>
+
+    <div class="dashboard-grid">
+      <!-- Left Panel: Payment Form -->
+      <div class="panel form-panel">
+        <h2>Payment Details</h2>
+        <form id="payment-form">
+          <div class="form-group">
+            <label for="f-amount">Amount ($)</label>
+            <input type="number" id="f-amount" name="f-amount" step="0.01" value="299.99" title="Transaction Amount" placeholder="299.99">
+          </div>
+          
+          <div class="form-group">
+            <label for="f-card">Card Type</label>
+            <select id="f-card" name="f-card" title="Card Type">
+              <option value="visa">Visa</option>
+              <option value="mastercard">Mastercard</option>
+              <option value="amex">Amex</option>
+              <option value="discover">Discover</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="f-email">Email Domain</label>
+            <input type="text" id="f-email" name="f-email" value="gmail.com" title="Email Domain" placeholder="gmail.com">
+          </div>
+          
+          <div class="form-group">
+            <label for="f-device">Device Type</label>
+            <select id="f-device" name="f-device" title="Device Type">
+              <option value="mobile">Mobile</option>
+              <option value="desktop">Desktop</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="f-hour">Hour of Day (0-23)</label>
+            <input type="number" id="f-hour" name="f-hour" min="0" max="23" value="14" title="Hour of Day" placeholder="14">
+          </div>
+          
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="f-repeat" name="f-repeat" checked title="Repeat Customer">
+            <label for="f-repeat" class="checkbox-label">Repeat Customer</label>
+          </div>
+          
+          <hr class="divider">
+          
+          <div class="form-group">
+            <label>Velocity (Txns on this card in last 10m / 1h / 24h)</label>
+            <div class="velocity-inputs">
+              <input type="number" id="f-v10m" name="f-v10m" value="1" title="10 min velocity" aria-label="10 min velocity" placeholder="1">
+              <input type="number" id="f-v1h" name="f-v1h" value="3" title="1 hr velocity" aria-label="1 hr velocity" placeholder="3">
+              <input type="number" id="f-v24h" name="f-v24h" value="8" title="24 hr velocity" aria-label="24 hr velocity" placeholder="8">
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="f-cards-device">Cards used on this device</label>
+            <input type="number" id="f-cards-device" name="f-cards-device" value="1" title="Cards used on device" placeholder="1">
+          </div>
+          
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="f-travel" name="f-travel" title="Impossible Travel">
+            <label for="f-travel" class="checkbox-label">Impossible Travel (Geo-Velocity)</label>
+          </div>
+          
+          <button type="submit" class="process-btn" id="btn-process">💳 Process Payment</button>
+        </form>
+
+        <h2 class="section-title">Demo Scenarios</h2>
+        <div class="scenarios-grid" id="scenarios-container">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Right Panel: Agent Decision -->
+      <div class="panel decision-panel" id="decision-panel">
+        <h2>Agent Decision</h2>
+        
+        <div class="action-badge" id="d-action">
+          ⏳ Waiting for transaction...
+        </div>
+        
+        <div>
+          <div class="prob-header">
+            <span>Fraud Probability</span>
+            <span id="d-prob">--%</span>
+          </div>
+          <div class="prob-bar-container">
+            <div class="prob-bar-fill" id="d-prob-bar"></div>
+          </div>
+          <div class="risk-level-label" id="d-risk">Risk: --</div>
+        </div>
+        
+        <div class="section-wrapper">
+          <h3 class="subsection-title">Expected Loss Comparison (Agent logic)</h3>
+          <p id="d-reason" class="reason-text">--</p>
+          <div class="loss-chart" id="d-loss-chart">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+        
+        <div class="section-wrapper">
+          <h3 class="subsection-title">Top SHAP Features (Why?)</h3>
+          <ul class="shap-list" id="d-shap-list">
+            <!-- Populated by JS -->
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- History Panel -->
+    <div class="panel history-feed">
+      <h2>Transaction History</h2>
+      
+      <div class="counter-box">
+        <div class="counter">
+          <div class="counter-title">Cumulative Fraud Prevented</div>
+          <div class="counter-val counter-green" id="stat-prevented">$0.00</div>
+        </div>
+        <div class="counter">
+          <div class="counter-title">Cumulative False Pos. Cost</div>
+          <div class="counter-val counter-red" id="stat-fpcost">$0.00</div>
+        </div>
+      </div>
+      
+      <div class="history-list" id="history-container">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

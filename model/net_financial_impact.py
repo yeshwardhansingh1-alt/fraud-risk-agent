@@ -5,6 +5,10 @@ NFI = prevented fraud value – false positive friction costs – chargeback fee
 Compare rule-engine baseline (Day 5) vs ML detector/agent on the same test set.
 """
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,7 +16,7 @@ import json
 import joblib
 import os
 import sys
-sys.path.insert(0, os.path.dirname(__file__) + "/..")
+
 from model.cost_model import COST_CONFIG
 
 MODEL_DIR = os.path.dirname(__file__)
@@ -132,13 +136,13 @@ def plot_nfi_comparison(baseline_nfi, ml_nfi, save_path):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.savefig(save_path, dpi=150)
     plt.close()
-    print(f"  Saved NFI comparison chart: {save_path}")
+    logger.info(f"  Saved NFI comparison chart: {save_path}")
 
 
 if __name__ == "__main__":
     # Load data
-    print("Loading test data...")
-    df = pd.read_csv(os.path.join(FEATURES_DIR, "modeling_table.csv"))
+    logger.info("Loading test data...")
+    df = pd.read_parquet(os.path.join(FEATURES_DIR, "modeling_table.parquet"))
     df = df.sort_values("TransactionDT").reset_index(drop=True)
 
     with open(os.path.join(MODEL_DIR, "split_info.json")) as f:
@@ -151,32 +155,32 @@ if __name__ == "__main__":
     amounts = test["TransactionAmt"].values
 
     # --- Rule Engine Baseline (Day 5) ---
-    print("\nLoading rule engine outputs...")
-    rule_outputs = pd.read_csv(os.path.join(FEATURES_DIR, "rule_engine_outputs.csv"))
+    logger.info("\nLoading rule engine outputs...")
+    rule_outputs = pd.read_parquet(os.path.join(FEATURES_DIR, "rule_engine_outputs.csv"))
     # Merge on TransactionID to align with test set
     test_with_rules = test.merge(rule_outputs[["TransactionID", "rule_any_fired"]],
                                   on="TransactionID", how="left")
     rule_preds = test_with_rules["rule_any_fired"].fillna(0).astype(int).values
     baseline_nfi = compute_nfi(y_true, rule_preds, amounts)
 
-    print(f"\nRule Engine NFI: ${baseline_nfi['nfi']:,.2f}")
-    print(f"  Precision: {baseline_nfi['precision']:.4f}, Recall: {baseline_nfi['recall']:.4f}")
+    logger.info(f"\nRule Engine NFI: ${baseline_nfi['nfi']:,.2f}")
+    logger.info(f"  Precision: {baseline_nfi['precision']:.4f}, Recall: {baseline_nfi['recall']:.4f}")
 
     # --- ML Detector ---
-    print("\nLoading ML model predictions...")
+    logger.info("\nLoading ML model predictions...")
     calibrated_model = joblib.load(os.path.join(MODEL_DIR, "calibrated_model.pkl"))
     y_pred_proba = calibrated_model.predict_proba(test[feature_cols])[:, 1]
     ml_preds = (y_pred_proba >= 0.5).astype(int)
     ml_nfi = compute_nfi(y_true, ml_preds, amounts)
 
-    print(f"\nML Detector NFI: ${ml_nfi['nfi']:,.2f}")
-    print(f"  Precision: {ml_nfi['precision']:.4f}, Recall: {ml_nfi['recall']:.4f}")
+    logger.info(f"\nML Detector NFI: ${ml_nfi['nfi']:,.2f}")
+    logger.info(f"  Precision: {ml_nfi['precision']:.4f}, Recall: {ml_nfi['recall']:.4f}")
 
     # --- Comparison ---
     improvement = ml_nfi["nfi"] - baseline_nfi["nfi"]
-    print(f"\n{'='*60}")
-    print(f"NFI Improvement (ML over Rules): ${improvement:,.2f}")
-    print(f"{'='*60}")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"NFI Improvement (ML over Rules): ${improvement:,.2f}")
+    logger.info(f"{'='*60}")
 
     # Plot comparison
     os.makedirs(PLOTS_DIR, exist_ok=True)
@@ -191,4 +195,4 @@ if __name__ == "__main__":
     with open(os.path.join(MODEL_DIR, "nfi_results.json"), "w") as f:
         json.dump(results, f, indent=2)
 
-    print("\nDay 16 complete.")
+

@@ -1,0 +1,110 @@
+[
+    {
+        "name": "Normal Purchase",
+        "description": "Typical daytime purchase by a known customer.",
+        "params": {
+            "amount": 45.00,
+            "card_type": "visa",
+            "email_domain": "gmail.com",
+            "device_type": "mobile",
+            "hour": 14,
+            "is_repeat_customer": true,
+            "velocity_10min": 1,
+            "velocity_1hr": 1,
+            "velocity_24hr": 2,
+            "cards_on_device": 1,
+            "amount_zscore": -0.2,
+            "impossible_travel": false
+        }
+    },
+    {
+        "name": "Velocity Attack",
+        "description": "Rapid succession of purchases on the same card.",
+        "params": {
+            "amount": 200.00,
+            "card_type": "mastercard",
+            "email_domain": "yahoo.com",
+            "device_type": "desktop",
+            "hour": 16,
+            "is_repeat_customer": false,
+            "velocity_10min": 8,
+            "velocity_1hr": 12,
+            "velocity_24hr": 15,
+            "cards_on_device": 1,
+            "amount_zscore": 1.5,
+            "impossible_travel": false
+        }
+    },
+    {
+        "name": "Stolen Card",
+        "description": "High value purchase on a new device with new email.",
+        "params": {
+            "amount": 899.99,
+            "card_type": "amex",
+            "email_domain": "tempmail.com",
+            "device_type": "mobile",
+            "hour": 22,
+            "is_repeat_customer": false,
+            "velocity_10min": 1,
+            "velocity_1hr": 1,
+            "velocity_24hr": 1,
+            "cards_on_device": 1,
+            "amount_zscore": 3.8,
+            "impossible_travel": true
+        }
+    },
+    {
+        "name": "Friendly Fraud",
+        "description": "Normal signals, but from a customer who frequently disputes.",
+        "params": {
+            "amount": 150.00,
+            "card_type": "visa",
+            "email_domain": "icloud.com",
+            "device_type": "mobile",
+            "hour": 10,
+            "is_repeat_customer": true,
+            "velocity_10min": 1,
+            "velocity_1hr": 2,
+            "velocity_24hr": 3,
+            "cards_on_device": 2,
+            "amount_zscore": 0.5,
+            "impossible_travel": false
+        }
+    },
+    {
+        "name": "Late Night Burst",
+        "description": "Unexpected spike in spending during early morning hours.",
+        "params": {
+            "amount": 500.00,
+            "card_type": "discover",
+            "email_domain": "outlook.com",
+            "device_type": "desktop",
+            "hour": 3,
+            "is_repeat_customer": false,
+            "velocity_10min": 2,
+            "velocity_1hr": 4,
+            "velocity_24hr": 4,
+            "cards_on_device": 1,
+            "amount_zscore": 2.1,
+            "impossible_travel": false
+        }
+    },
+    {
+        "name": "Fraud Ring",
+        "description": "Multiple different cards being used on the same device.",
+        "params": {
+            "amount": 300.00,
+            "card_type": "visa",
+            "email_domain": "hotmail.com",
+            "device_type": "desktop",
+            "hour": 18,
+            "is_repeat_customer": false,
+            "velocity_10min": 1,
+            "velocity_1hr": 3,
+            "velocity_24hr": 10,
+            "cards_on_device": 8,
+            "amount_zscore": 1.1,
+            "impossible_travel": false
+        }
+    }
+]

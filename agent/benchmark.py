@@ -5,6 +5,10 @@ Send a few thousand requests to the FastAPI endpoint,
 record p50/p95/p99 latency, confirm <250ms target is met.
 """
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+
 import requests
 import time
 import json
@@ -21,7 +25,7 @@ PLOTS_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
 def build_sample_requests(n=1000):
     """Build sample requests from the test set."""
-    df = pd.read_csv(os.path.join(FEATURES_DIR, "modeling_table.csv"))
+    df = pd.read_parquet(os.path.join(FEATURES_DIR, "modeling_table.parquet"))
     with open(os.path.join(MODEL_DIR, "feature_cols.json")) as f:
         feature_cols = json.load(f)
     with open(os.path.join(MODEL_DIR, "split_info.json")) as f:
@@ -48,15 +52,15 @@ def benchmark(requests_list, n_warmup=10):
     """
     Send requests to the API and measure latency.
     """
-    print(f"Benchmarking with {len(requests_list)} requests...")
+    logger.info(f"Benchmarking with {len(requests_list)} requests...")
 
     # Warmup
-    print(f"  Warming up ({n_warmup} requests)...")
+    logger.info(f"  Warming up ({n_warmup} requests)...")
     for req in requests_list[:n_warmup]:
         try:
             requests.post(f"{API_URL}/predict", json=req, timeout=5)
         except Exception as e:
-            print(f"  Warmup error: {e}")
+            logger.info(f"  Warmup error: {e}")
             return None
 
     # Benchmark
@@ -76,7 +80,7 @@ def benchmark(requests_list, n_warmup=10):
             errors += 1
 
         if (i + 1) % 200 == 0:
-            print(f"  Sent {i + 1}/{len(requests_list)} requests...")
+            logger.info(f"  Sent {i + 1}/{len(requests_list)} requests...")
 
     latencies = np.array(latencies)
 
@@ -98,20 +102,20 @@ def benchmark(requests_list, n_warmup=10):
 
 def print_results(results):
     """Pretty-print benchmark results."""
-    print("\n" + "=" * 60)
-    print("LATENCY BENCHMARK RESULTS")
-    print("=" * 60)
-    print(f"  Total requests:  {results['total_requests']}")
-    print(f"  Successful:      {results['successful']}")
-    print(f"  Errors:          {results['errors']}")
-    print(f"\n  p50:  {results['p50_ms']:.1f} ms")
-    print(f"  p95:  {results['p95_ms']:.1f} ms")
-    print(f"  p99:  {results['p99_ms']:.1f} ms")
-    print(f"  Mean: {results['mean_ms']:.1f} ms")
-    print(f"  Min:  {results['min_ms']:.1f} ms")
-    print(f"  Max:  {results['max_ms']:.1f} ms")
-    print(f"\n  Target (<250ms p99): {'✓ MET' if results['target_250ms_met'] else '✗ NOT MET'}")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("LATENCY BENCHMARK RESULTS")
+    logger.info("=" * 60)
+    logger.info(f"  Total requests:  {results['total_requests']}")
+    logger.info(f"  Successful:      {results['successful']}")
+    logger.info(f"  Errors:          {results['errors']}")
+    logger.info(f"\n  p50:  {results['p50_ms']:.1f} ms")
+    logger.info(f"  p95:  {results['p95_ms']:.1f} ms")
+    logger.info(f"  p99:  {results['p99_ms']:.1f} ms")
+    logger.info(f"  Mean: {results['mean_ms']:.1f} ms")
+    logger.info(f"  Min:  {results['min_ms']:.1f} ms")
+    logger.info(f"  Max:  {results['max_ms']:.1f} ms")
+    logger.info(f"\n  Target (<250ms p99): {'✓ MET' if results['target_250ms_met'] else '✗ NOT MET'}")
+    logger.info("=" * 60)
 
 
 def plot_latency_histogram(latencies, save_path):
@@ -134,17 +138,17 @@ def plot_latency_histogram(latencies, save_path):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.savefig(save_path, dpi=150)
     plt.close()
-    print(f"  Saved latency histogram: {save_path}")
+    logger.info(f"  Saved latency histogram: {save_path}")
 
 
 if __name__ == "__main__":
     # Check if API is running
     try:
         health = requests.get(f"{API_URL}/health", timeout=3)
-        print(f"API health: {health.json()}")
+        logger.info(f"API health: {health.json()}")
     except Exception:
-        print("ERROR: API is not running. Start it first with:")
-        print("  python agent/api.py")
+        logger.info("ERROR: API is not running. Start it first with:")
+        logger.info("  python agent/api.py")
         exit(1)
 
     # Build requests
@@ -163,6 +167,6 @@ if __name__ == "__main__":
         # Save results
         with open(os.path.join(MODEL_DIR, "latency_results.json"), "w") as f:
             json.dump(results, f, indent=2)
-        print(f"\nSaved latency results to: model/latency_results.json")
+        logger.info(f"\nSaved latency results to: model/latency_results.json")
 
-    print("\nDays 18-19 complete.")
+

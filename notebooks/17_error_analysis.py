@@ -6,6 +6,10 @@ Look at false positives and false negatives manually — note patterns.
 Write down 2-3 concrete failure cases for the write-up.
 """
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,7 +18,7 @@ import json
 import joblib
 import os
 import sys
-sys.path.insert(0, os.path.dirname(__file__) + "/..")
+
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "model")
 FEATURES_DIR = os.path.join(os.path.dirname(__file__), "..", "features")
@@ -33,74 +37,74 @@ def analyze_errors(test, y_true, y_pred_proba, feature_cols, threshold=0.5):
     fps["predicted_proba"] = y_pred_proba[fp_mask]
     fns["predicted_proba"] = y_pred_proba[fn_mask]
 
-    print("=" * 60)
-    print("ERROR ANALYSIS")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("ERROR ANALYSIS")
+    logger.info("=" * 60)
 
     # --- False Positives ---
-    print(f"\n--- FALSE POSITIVES ({len(fps):,}) ---")
-    print(f"  These are legitimate transactions we incorrectly blocked.")
-    print(f"\n  Amount stats:")
-    print(f"    Mean: ${fps['TransactionAmt'].mean():.2f}")
-    print(f"    Median: ${fps['TransactionAmt'].median():.2f}")
-    print(f"    Max: ${fps['TransactionAmt'].max():.2f}")
-    print(f"  Predicted probability stats:")
-    print(f"    Mean: {fps['predicted_proba'].mean():.4f}")
-    print(f"    Median: {fps['predicted_proba'].median():.4f}")
+    logger.info(f"\n--- FALSE POSITIVES ({len(fps):,}) ---")
+    logger.info(f"  These are legitimate transactions we incorrectly blocked.")
+    logger.info(f"\n  Amount stats:")
+    logger.info(f"    Mean: ${fps['TransactionAmt'].mean():.2f}")
+    logger.info(f"    Median: ${fps['TransactionAmt'].median():.2f}")
+    logger.info(f"    Max: ${fps['TransactionAmt'].max():.2f}")
+    logger.info(f"  Predicted probability stats:")
+    logger.info(f"    Mean: {fps['predicted_proba'].mean():.4f}")
+    logger.info(f"    Median: {fps['predicted_proba'].median():.4f}")
 
     # Common patterns in FPs
     if "hour_of_day" in fps.columns:
         top_hours = fps["hour_of_day"].value_counts().head(3)
-        print(f"\n  Most common hours for FPs: {dict(top_hours)}")
+        logger.info(f"\n  Most common hours for FPs: {dict(top_hours)}")
 
     if "card1_txn_count_24hr" in fps.columns:
-        print(f"  Average velocity (txn/24hr): {fps['card1_txn_count_24hr'].mean():.1f}")
+        logger.info(f"  Average velocity (txn/24hr): {fps['card1_txn_count_24hr'].mean():.1f}")
 
     # --- False Negatives ---
-    print(f"\n--- FALSE NEGATIVES ({len(fns):,}) ---")
-    print(f"  These are fraud we missed (approved fraudulent transactions).")
-    print(f"\n  Amount stats:")
-    print(f"    Mean: ${fns['TransactionAmt'].mean():.2f}")
-    print(f"    Median: ${fns['TransactionAmt'].median():.2f}")
-    print(f"    Max: ${fns['TransactionAmt'].max():.2f}")
-    print(f"  Predicted probability stats:")
-    print(f"    Mean: {fns['predicted_proba'].mean():.4f}")
-    print(f"    Max: {fns['predicted_proba'].max():.4f}")
+    logger.info(f"\n--- FALSE NEGATIVES ({len(fns):,}) ---")
+    logger.info(f"  These are fraud we missed (approved fraudulent transactions).")
+    logger.info(f"\n  Amount stats:")
+    logger.info(f"    Mean: ${fns['TransactionAmt'].mean():.2f}")
+    logger.info(f"    Median: ${fns['TransactionAmt'].median():.2f}")
+    logger.info(f"    Max: ${fns['TransactionAmt'].max():.2f}")
+    logger.info(f"  Predicted probability stats:")
+    logger.info(f"    Mean: {fns['predicted_proba'].mean():.4f}")
+    logger.info(f"    Max: {fns['predicted_proba'].max():.4f}")
 
     # --- Concrete Failure Cases ---
-    print(f"\n{'='*60}")
-    print("CONCRETE FAILURE CASES")
-    print("=" * 60)
+    logger.info(f"\n{'='*60}")
+    logger.info("CONCRETE FAILURE CASES")
+    logger.info("=" * 60)
 
     # FP failure case: highest-confidence false positive
     if len(fps) > 0:
         worst_fp = fps.nlargest(1, "predicted_proba").iloc[0]
-        print(f"\n  Failure Case 1: Highest-Confidence False Positive")
-        print(f"    TransactionID: {worst_fp['TransactionID']:.0f}")
-        print(f"    Amount: ${worst_fp['TransactionAmt']:.2f}")
-        print(f"    Predicted fraud prob: {worst_fp['predicted_proba']:.4f}")
-        print(f"    Was actually: LEGITIMATE")
-        print(f"    Impact: customer blocked, ${worst_fp['TransactionAmt']:.2f} revenue at risk")
+        logger.info(f"\n  Failure Case 1: Highest-Confidence False Positive")
+        logger.info(f"    TransactionID: {worst_fp['TransactionID']:.0f}")
+        logger.info(f"    Amount: ${worst_fp['TransactionAmt']:.2f}")
+        logger.info(f"    Predicted fraud prob: {worst_fp['predicted_proba']:.4f}")
+        logger.info(f"    Was actually: LEGITIMATE")
+        logger.info(f"    Impact: customer blocked, ${worst_fp['TransactionAmt']:.2f} revenue at risk")
 
     # FP failure case: highest-amount false positive
     if len(fps) > 0:
         expensive_fp = fps.nlargest(1, "TransactionAmt").iloc[0]
-        print(f"\n  Failure Case 2: Highest-Amount False Positive")
-        print(f"    TransactionID: {expensive_fp['TransactionID']:.0f}")
-        print(f"    Amount: ${expensive_fp['TransactionAmt']:.2f}")
-        print(f"    Predicted fraud prob: {expensive_fp['predicted_proba']:.4f}")
-        print(f"    Was actually: LEGITIMATE")
-        print(f"    Impact: ${expensive_fp['TransactionAmt'] * 0.80:.2f} estimated lost revenue")
+        logger.info(f"\n  Failure Case 2: Highest-Amount False Positive")
+        logger.info(f"    TransactionID: {expensive_fp['TransactionID']:.0f}")
+        logger.info(f"    Amount: ${expensive_fp['TransactionAmt']:.2f}")
+        logger.info(f"    Predicted fraud prob: {expensive_fp['predicted_proba']:.4f}")
+        logger.info(f"    Was actually: LEGITIMATE")
+        logger.info(f"    Impact: ${expensive_fp['TransactionAmt'] * 0.80:.2f} estimated lost revenue")
 
     # FN failure case: highest-amount missed fraud
     if len(fns) > 0:
         worst_fn = fns.nlargest(1, "TransactionAmt").iloc[0]
-        print(f"\n  Failure Case 3: Highest-Amount Missed Fraud")
-        print(f"    TransactionID: {worst_fn['TransactionID']:.0f}")
-        print(f"    Amount: ${worst_fn['TransactionAmt']:.2f}")
-        print(f"    Predicted fraud prob: {worst_fn['predicted_proba']:.4f}")
-        print(f"    Was actually: FRAUD")
-        print(f"    Impact: ${worst_fn['TransactionAmt'] + 25:.2f} total loss (amount + chargeback)")
+        logger.info(f"\n  Failure Case 3: Highest-Amount Missed Fraud")
+        logger.info(f"    TransactionID: {worst_fn['TransactionID']:.0f}")
+        logger.info(f"    Amount: ${worst_fn['TransactionAmt']:.2f}")
+        logger.info(f"    Predicted fraud prob: {worst_fn['predicted_proba']:.4f}")
+        logger.info(f"    Was actually: FRAUD")
+        logger.info(f"    Impact: ${worst_fn['TransactionAmt'] + 25:.2f} total loss (amount + chargeback)")
 
     return fps, fns
 
@@ -126,13 +130,13 @@ def plot_test_reliability_diagram(y_true, y_pred_proba, save_path):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.savefig(save_path, dpi=150)
     plt.close()
-    print(f"  Saved: {save_path}")
+    logger.info(f"  Saved: {save_path}")
 
 
 if __name__ == "__main__":
     # Load data
-    print("Loading data...")
-    df = pd.read_csv(os.path.join(FEATURES_DIR, "modeling_table.csv"))
+    logger.info("Loading data...")
+    df = pd.read_parquet(os.path.join(FEATURES_DIR, "modeling_table.parquet"))
     df = df.sort_values("TransactionDT").reset_index(drop=True)
 
     with open(os.path.join(MODEL_DIR, "feature_cols.json")) as f:
@@ -156,4 +160,4 @@ if __name__ == "__main__":
     # Error analysis
     fps, fns = analyze_errors(test, y_true, y_pred_proba, feature_cols)
 
-    print("\nDay 17 complete.")
+

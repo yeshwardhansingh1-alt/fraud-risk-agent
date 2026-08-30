@@ -1,5 +1,9 @@
 # Data files (too large for git)
 data/*.csv
+features/modeling_table.csv
+features/rule_engine_outputs.csv
+agent/test_decisions.json
+model/explanations.json
 data/*.zip
 data/*.parquet
 
@@ -32,6 +36,13 @@ Thumbs.db
 model/*.pkl
 model/*.joblib
 model/*.txt
+model/*.json
+!model/cost_config.json
+!model/feature_cols.json
+!model/split_info.json
+
+# Plots
+plots/*.png
 
 # Logs
 *.log

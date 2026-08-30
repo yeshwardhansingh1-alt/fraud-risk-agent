@@ -3,7 +3,13 @@ import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 
 class LGBMWrapper:
-    """Wrap a LightGBM Booster to work with sklearn's CalibratedClassifierCV."""
+    """
+    Wrap a LightGBM Booster to mimic the scikit-learn estimator interface.
+    
+    This wrapper ensures that we can call `.predict_proba(X)` on a raw 
+    LightGBM booster, which is required by calibration routines like 
+    CustomCalibratedClassifier.
+    """
 
     def __init__(self, booster, feature_cols):
         self.booster = booster
@@ -31,7 +37,21 @@ class LGBMWrapper:
 
 
 class CustomCalibratedClassifier:
+    """
+    A custom wrapper for applying Isotonic Regression calibration 
+    to any model wrapper that outputs uncalibrated probabilities.
+    
+    This is necessary because sklearn's CalibratedClassifierCV requires 
+    models to implement the full sklearn estimator API, which raw LightGBM 
+    Boosters do not perfectly support.
+    """
     def __init__(self, model_wrapper):
+        """
+        Initialize the calibrator.
+        
+        Args:
+            model_wrapper: Any object implementing `predict_proba(X)`.
+        """
         self.model_wrapper = model_wrapper
         self.calibrator = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
         

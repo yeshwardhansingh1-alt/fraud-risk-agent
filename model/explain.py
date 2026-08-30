@@ -1,40 +1,36 @@
 """
 Days 12-13 — Explainability Layer [CORE].
 
-SHAP TreeExplainer for feature-level attribution on flagged transactions.
+LightGBM built-in SHAP functionality for feature-level attribution on flagged transactions.
 Extract top 3-5 contributing features per flagged transaction.
 Build "decision receipt" text generator that attaches to the agent's JSON output.
 """
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
-import shap
 import lightgbm as lgb
 import matplotlib.pyplot as plt
 import json
 import joblib
 import sys
 import os
-sys.path.insert(0, os.path.dirname(__file__) + "/..")
+
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "model")
 FEATURES_DIR = os.path.join(os.path.dirname(__file__), "..", "features")
 PLOTS_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
 
-def create_explainer(booster, feature_cols):
-    """Create a SHAP TreeExplainer for the LightGBM booster."""
-    print("Creating SHAP TreeExplainer...")
-    explainer = shap.TreeExplainer(booster)
-    return explainer
-
-
-def explain_transaction(explainer, features, feature_cols, top_n=5):
+def explain_transaction(booster, features, feature_cols, top_n=5):
     """
-    Explain a single transaction.
+    Explain a single transaction using LightGBM's native SHAP values.
 
     Args:
-        explainer: SHAP TreeExplainer
+        booster: LightGBM Booster
         features: 1D array of feature values
         feature_cols: list of feature names
         top_n: number of top contributing features to return
@@ -43,13 +39,11 @@ def explain_transaction(explainer, features, feature_cols, top_n=5):
         dict with SHAP values and top features
     """
     features_2d = np.array(features).reshape(1, -1)
-    shap_values = explainer.shap_values(features_2d)
-
-    # For binary classification, shap_values might be a list [neg_class, pos_class]
-    if isinstance(shap_values, list):
-        sv = shap_values[1][0]  # Positive class (fraud)
-    else:
-        sv = shap_values[0]
+    
+    # LightGBM returns SHAP values + expected value (base value) as the last column
+    shap_values_with_base = booster.predict(features_2d, pred_contrib=True)[0]
+    sv = shap_values_with_base[:-1]
+    base_val = shap_values_with_base[-1]
 
     # Sort by absolute SHAP value
     feature_importance = sorted(
@@ -71,8 +65,7 @@ def explain_transaction(explainer, features, feature_cols, top_n=5):
     return {
         "shap_values": dict(zip(feature_cols, [round(float(v), 4) for v in sv])),
         "top_features": top_features,
-        "base_value": round(float(explainer.expected_value if not isinstance(
-            explainer.expected_value, list) else explainer.expected_value[1]), 4),
+        "base_value": round(float(base_val), 4),
     }
 
 
@@ -116,30 +109,32 @@ def generate_decision_receipt(transaction, decision, explanation):
     return "\n".join(receipt_lines)
 
 
-def plot_shap_waterfall(explainer, features, feature_cols, save_path, txn_id=None):
-    """Save a SHAP waterfall plot for a single transaction."""
+def plot_shap_waterfall(booster, features, feature_cols, save_path, txn_id=None):
+    """Save a simple feature contribution plot (replacing SHAP waterfall)."""
     features_2d = np.array(features).reshape(1, -1)
-
-    # Create SHAP Explanation object
-    shap_values = explainer.shap_values(features_2d)
-    if isinstance(shap_values, list):
-        sv = shap_values[1][0]
-        base_val = explainer.expected_value[1] if isinstance(
-            explainer.expected_value, list) else explainer.expected_value
-    else:
-        sv = shap_values[0]
-        base_val = explainer.expected_value
-
-    explanation = shap.Explanation(
-        values=sv,
-        base_values=base_val,
-        data=features.flatten(),
-        feature_names=feature_cols,
-    )
-
-    fig, ax = plt.subplots(figsize=(12, 8))
-    shap.plots.waterfall(explanation, max_display=10, show=False)
-    title = f"SHAP Waterfall — Transaction {txn_id}" if txn_id else "SHAP Waterfall"
+    shap_values_with_base = booster.predict(features_2d, pred_contrib=True)[0]
+    sv = shap_values_with_base[:-1]
+    
+    feature_importance = sorted(
+        zip(feature_cols, sv),
+        key=lambda x: abs(x[1]),
+        reverse=True,
+    )[:10]
+    
+    names = [x[0] for x in feature_importance]
+    vals = [x[1] for x in feature_importance]
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors = ['#ff8a80' if v > 0 else '#82b1ff' for v in vals]
+    
+    y_pos = np.arange(len(names))
+    ax.barh(y_pos, vals, align='center', color=colors)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(names)
+    ax.invert_yaxis()  # labels read top-to-bottom
+    ax.set_xlabel('SHAP Value (Contribution to Log Odds)')
+    
+    title = f"Top Feature Contributions — Transaction {txn_id}" if txn_id else "Top Feature Contributions"
     plt.title(title)
     plt.tight_layout()
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -152,33 +147,31 @@ def explain_flagged_transactions(booster, calibrated_model, df, feature_cols, th
     Explain all flagged (predicted fraud) transactions on a dataset.
     Returns list of explanation dicts.
     """
-    explainer = create_explainer(booster, feature_cols)
-
     X = df[feature_cols]
     y_pred = calibrated_model.predict_proba(X)[:, 1]
     flagged_mask = y_pred >= threshold
     flagged_indices = df.index[flagged_mask]
 
-    print(f"Flagged {flagged_mask.sum():,} transactions (threshold={threshold})")
-    print(f"Explaining top {min(max_explain, len(flagged_indices)):,}...")
+    logger.info(f"Flagged {flagged_mask.sum():,} transactions (threshold={threshold})")
+    logger.info(f"Explaining top {min(max_explain, len(flagged_indices)):,}...")
 
     explanations = []
     for i, idx in enumerate(flagged_indices[:max_explain]):
         features = X.loc[idx].values
-        expl = explain_transaction(explainer, features, feature_cols)
+        expl = explain_transaction(booster, features, feature_cols)
         expl["transaction_id"] = int(df.loc[idx, "TransactionID"])
         expl["fraud_probability"] = float(y_pred[df.index.get_loc(idx)])
         explanations.append(expl)
 
         if (i + 1) % 50 == 0:
-            print(f"  Explained {i + 1}/{min(max_explain, len(flagged_indices))}")
+            logger.info(f"  Explained {i + 1}/{min(max_explain, len(flagged_indices))}")
 
     return explanations
 
 
 if __name__ == "__main__":
     # Load model
-    print("Loading model...")
+    logger.info("Loading model...")
     booster = lgb.Booster(model_file=os.path.join(MODEL_DIR, "lgbm_model.txt"))
     calibrated_model = joblib.load(os.path.join(MODEL_DIR, "calibrated_model.pkl"))
 
@@ -188,8 +181,8 @@ if __name__ == "__main__":
         split_info = json.load(f)
 
     # Load test data
-    print("Loading test data...")
-    df = pd.read_csv(os.path.join(FEATURES_DIR, "modeling_table.csv"))
+    logger.info("Loading test data...")
+    df = pd.read_parquet(os.path.join(FEATURES_DIR, "modeling_table.parquet"))
     df = df.sort_values("TransactionDT").reset_index(drop=True)
     test = df.iloc[split_info["train_size"] + split_info["val_size"]:]
 
@@ -202,20 +195,17 @@ if __name__ == "__main__":
     out_path = os.path.join(MODEL_DIR, "explanations.json")
     with open(out_path, "w") as f:
         json.dump(explanations, f, indent=2)
-    print(f"\nSaved {len(explanations)} explanations to: {out_path}")
+    logger.info(f"\nSaved {len(explanations)} explanations to: {out_path}")
 
     # Plot a sample waterfall
     if len(explanations) > 0:
-        explainer = create_explainer(booster, feature_cols)
         sample_idx = test.index[0]
         os.makedirs(PLOTS_DIR, exist_ok=True)
         plot_shap_waterfall(
-            explainer,
+            booster,
             test.loc[sample_idx, feature_cols].values,
             feature_cols,
             os.path.join(PLOTS_DIR, "shap_waterfall_sample.png"),
             txn_id=test.loc[sample_idx, "TransactionID"],
         )
-        print(f"Saved sample SHAP waterfall to: plots/shap_waterfall_sample.png")
-
-    print("\nDays 12-13 complete.")
+        logger.info(f"Saved sample SHAP waterfall to: plots/shap_waterfall_sample.png")

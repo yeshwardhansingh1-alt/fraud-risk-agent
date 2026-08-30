@@ -12,7 +12,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
-import shap
 import matplotlib.pyplot as plt
 from sklearn.calibration import calibration_curve
 from sklearn.metrics import roc_curve, precision_recall_curve, roc_auc_score, average_precision_score
@@ -22,11 +21,11 @@ import os
 import sys
 import time
 
+from model.cost_model import COST_CONFIG
+
 # Add project paths
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
-sys.path.insert(0, PROJECT_ROOT)
-sys.path.insert(0, os.path.join(PROJECT_ROOT, "agent"))
-from expected_loss import argmin_action
+from agent.expected_loss import argmin_action
 
 MODEL_DIR = os.path.join(PROJECT_ROOT, "model")
 FEATURES_DIR = os.path.join(PROJECT_ROOT, "features")
@@ -52,15 +51,13 @@ def load_models():
     with open(os.path.join(MODEL_DIR, "split_info.json")) as f:
         split_info = json.load(f)
 
-    explainer = shap.TreeExplainer(booster)
-
-    return calibrated_model, booster, feature_cols, split_info, explainer
+    return calibrated_model, booster, feature_cols, split_info
 
 
 @st.cache_data
 def load_test_data(_split_info, feature_cols):
     """Load test set data (cached)."""
-    df = pd.read_csv(os.path.join(FEATURES_DIR, "modeling_table.csv"))
+    df = pd.read_parquet(os.path.join(FEATURES_DIR, "modeling_table.parquet"))
     df = df.sort_values("TransactionDT").reset_index(drop=True)
     test = df.iloc[_split_info["train_size"] + _split_info["val_size"]:].copy()
 
@@ -87,7 +84,7 @@ def render_sidebar():
     return page
 
 
-def render_replay_page(calibrated_model, booster, feature_cols, split_info, explainer, test):
+def render_replay_page(calibrated_model, booster, feature_cols, split_info, test):
     """Day 22-24: Transaction replay with live decisions."""
     st.title("🔄 Transaction Replay")
     st.markdown("Step through test-set transactions and see live agent decisions.")
@@ -112,16 +109,19 @@ def render_replay_page(calibrated_model, booster, feature_cols, split_info, expl
         st.session_state.cumulative_nfi = 0.0
         st.session_state.cumulative_blocked_fraud = 0.0
         st.session_state.cumulative_fp_cost = 0.0
+        st.session_state.seen_txns = set()
 
     is_fraud = row["isFraud"] == 1
     amt = row["TransactionAmt"]
 
-    if action in ("block", "step_up"):
-        if is_fraud:
-            st.session_state.cumulative_blocked_fraud += amt
-        else:
-            st.session_state.cumulative_fp_cost += 25 + amt * 0.8
-    st.session_state.cumulative_nfi = st.session_state.cumulative_blocked_fraud - st.session_state.cumulative_fp_cost
+    if txn_index not in st.session_state.seen_txns:
+        st.session_state.seen_txns.add(txn_index)
+        if action in ("block", "step_up"):
+            if is_fraud:
+                st.session_state.cumulative_blocked_fraud += amt * COST_CONFIG.get("fraud_loss_fraction", 1.0)
+            else:
+                st.session_state.cumulative_fp_cost += COST_CONFIG.get("false_positive_friction_cost", 25.0) + amt * COST_CONFIG.get("lost_revenue_fraction", 0.8)
+        st.session_state.cumulative_nfi = st.session_state.cumulative_blocked_fraud - st.session_state.cumulative_fp_cost
 
     # Display metrics
     m1, m2, m3, m4 = st.columns(4)
@@ -154,17 +154,10 @@ def render_replay_page(calibrated_model, booster, feature_cols, split_info, expl
 
     with col_right:
         st.subheader("SHAP Explanation")
-        # Compute SHAP values
+        # Compute SHAP values via LightGBM native
         features = row[feature_cols].values.reshape(1, -1)
-        shap_values = explainer.shap_values(features)
-
-        if isinstance(shap_values, list):
-            sv = shap_values[1][0]
-            base_val = explainer.expected_value[1] if isinstance(
-                explainer.expected_value, list) else explainer.expected_value
-        else:
-            sv = shap_values[0]
-            base_val = explainer.expected_value
+        shap_values_with_base = booster.predict(features, pred_contrib=True)[0]
+        sv = shap_values_with_base[:-1]
 
         # Top 5 features
         sorted_feats = sorted(zip(feature_cols, sv), key=lambda x: abs(x[1]), reverse=True)[:5]
@@ -172,15 +165,18 @@ def render_replay_page(calibrated_model, booster, feature_cols, split_info, expl
             direction = "↑" if shap_val > 0 else "↓"
             st.text(f"  {direction} {feat_name}: SHAP={shap_val:+.4f}")
 
-        # SHAP waterfall plot
-        explanation = shap.Explanation(
-            values=sv,
-            base_values=base_val,
-            data=features.flatten(),
-            feature_names=feature_cols,
-        )
+        # Simple bar chart (replacing waterfall)
+        top_10 = sorted(zip(feature_cols, sv), key=lambda x: abs(x[1]), reverse=True)[:10]
+        names = [x[0] for x in top_10]
+        vals = [x[1] for x in top_10]
         fig, ax = plt.subplots(figsize=(8, 6))
-        shap.plots.waterfall(explanation, max_display=8, show=False)
+        colors = ['#ff8a80' if v > 0 else '#82b1ff' for v in vals]
+        y_pos = np.arange(len(names))
+        ax.barh(y_pos, vals, align='center', color=colors)
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(names)
+        ax.invert_yaxis()
+        ax.set_xlabel('SHAP Value')
         st.pyplot(fig)
         plt.close()
 
@@ -304,7 +300,7 @@ def main():
     page = render_sidebar()
 
     try:
-        calibrated_model, booster, feature_cols, split_info, explainer = load_models()
+        calibrated_model, booster, feature_cols, split_info = load_models()
         test = load_test_data(split_info, feature_cols)
     except Exception as e:
         st.error(f"Error loading models: {e}")
@@ -312,7 +308,7 @@ def main():
         return
 
     if "Replay" in page:
-        render_replay_page(calibrated_model, booster, feature_cols, split_info, explainer, test)
+        render_replay_page(calibrated_model, booster, feature_cols, split_info, test)
     elif "Metrics" in page:
         render_metrics_page(calibrated_model, feature_cols, split_info, test)
     elif "About" in page:

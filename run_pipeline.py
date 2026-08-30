@@ -5,21 +5,25 @@ Re-run the whole pipeline from scratch to confirm reproducibility.
 This script orchestrates all steps in order.
 """
 
+import logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
 import subprocess
 import sys
 import os
 import time
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-PYTHON = os.path.join(PROJECT_ROOT, "venv", "Scripts", "python.exe")
+PYTHON = sys.executable
 
 
 def run_step(name, script_path):
     """Run a pipeline step and report success/failure."""
-    print(f"\n{'='*60}")
-    print(f"STEP: {name}")
-    print(f"Script: {script_path}")
-    print(f"{'='*60}\n")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"STEP: {name}")
+    logger.info(f"Script: {script_path}")
+    logger.info(f"{'='*60}\n")
 
     start = time.time()
     result = subprocess.run(
@@ -30,19 +34,19 @@ def run_step(name, script_path):
     elapsed = time.time() - start
 
     if result.returncode == 0:
-        print(f"\n  [PASS] {name} completed in {elapsed:.1f}s")
+        logger.info(f"\n  [PASS] {name} completed in {elapsed:.1f}s")
     else:
-        print(f"\n  [FAIL] {name} FAILED (exit code {result.returncode})")
+        logger.info(f"\n  [FAIL] {name} FAILED (exit code {result.returncode})")
         return False
     return True
 
 
 def main():
-    print("=" * 60)
-    print("FRAUD RISK AGENT — FULL PIPELINE")
-    print("=" * 60)
-    print(f"Project root: {PROJECT_ROOT}")
-    print(f"Python: {PYTHON}")
+    logger.info("=" * 60)
+    logger.info("FRAUD RISK AGENT — FULL PIPELINE")
+    logger.info("=" * 60)
+    logger.info(f"Project root: {PROJECT_ROOT}")
+    logger.info(f"Python: {PYTHON}")
 
     steps = [
         ("Day 1: Load & Inspect Data", "notebooks/01_load_and_inspect.py"),
@@ -66,7 +70,7 @@ def main():
     for name, script in steps:
         script_path = os.path.join(PROJECT_ROOT, script)
         if not os.path.exists(script_path):
-            print(f"\n  SKIP: {script} not found")
+            logger.info(f"\n  SKIP: {script} not found")
             results.append((name, "SKIPPED"))
             continue
 
@@ -74,28 +78,28 @@ def main():
         results.append((name, "PASS" if success else "FAIL"))
 
         if not success:
-            print(f"\nPipeline stopped at: {name}")
+            logger.info(f"\nPipeline stopped at: {name}")
             break
 
     total_elapsed = time.time() - total_start
 
     # --- Summary ---
-    print(f"\n\n{'='*60}")
-    print("PIPELINE SUMMARY")
-    print(f"{'='*60}")
+    logger.info(f"\n\n{'='*60}")
+    logger.info("PIPELINE SUMMARY")
+    logger.info(f"{'='*60}")
     for name, status in results:
         icon = "[PASS]" if status == "PASS" else ("[SKIP]" if status == "SKIPPED" else "[FAIL]")
-        print(f"  {icon} {name}: {status}")
+        logger.info(f"  {icon} {name}: {status}")
 
-    print(f"\nTotal time: {total_elapsed:.1f}s ({total_elapsed/60:.1f} min)")
+    logger.info(f"\nTotal time: {total_elapsed:.1f}s ({total_elapsed/60:.1f} min)")
 
     failed = sum(1 for _, s in results if s == "FAIL")
     if failed == 0:
-        print("\n  [PASS] ALL STEPS PASSED -- pipeline is reproducible!")
+        logger.info("\n  [PASS] ALL STEPS PASSED -- pipeline is reproducible!")
     else:
-        print(f"\n  [FAIL] {failed} step(s) failed.")
+        logger.info(f"\n  [FAIL] {failed} step(s) failed.")
 
-    print(f"{'='*60}")
+    logger.info(f"{'='*60}")
 
 
 if __name__ == "__main__":

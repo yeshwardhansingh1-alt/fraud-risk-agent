@@ -9,6 +9,10 @@ Purely defensive — drafting evidence for a dispute you're already facing,
 not evading anything.
 """
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+
 import json
 from datetime import datetime
 
@@ -217,5 +221,5 @@ if __name__ == "__main__":
     }
 
     response = generate_dispute_response(sample_txn, sample_decision)
-    print(response)
-    print("\nDay 11 complete.")
+    logger.info(response)
+

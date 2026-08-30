@@ -5,6 +5,10 @@ Amount z-score vs. card's own historical mean/std (expanding window).
 "Impossible travel" flag using addr columns as a geo proxy.
 """
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 
@@ -14,7 +18,7 @@ def build_behavioral_features(df):
     df = df.sort_values("TransactionDT").copy()
 
     # Amount z-score vs card's own history (expanding, shifted to avoid leakage)
-    print("  Building amount_zscore_card...")
+    logger.info("  Building amount_zscore_card...")
     card_groups = df.groupby("card1")["TransactionAmt"]
     expanding_mean = card_groups.apply(lambda x: x.expanding().mean().shift(1)).droplevel(0).sort_index()
     expanding_std = card_groups.apply(lambda x: x.expanding().std().shift(1)).droplevel(0).sort_index()
@@ -27,7 +31,7 @@ def build_behavioral_features(df):
     df.drop(columns=["card_amt_expanding_mean", "card_amt_expanding_std"], inplace=True)
 
     # "Impossible travel" flag
-    print("  Building impossible_travel flag...")
+    logger.info("  Building impossible_travel flag...")
     df["_prev_addr1"] = df.groupby("card1")["addr1"].shift(1)
     df["_prev_addr2"] = df.groupby("card1")["addr2"].shift(1)
     df["_time_since_last"] = df.groupby("card1")["TransactionDT"].diff()
@@ -38,5 +42,5 @@ def build_behavioral_features(df):
     df["impossible_travel"] = (addr_changed & short_gap & has_prev).astype(int)
     df.drop(columns=["_prev_addr1", "_prev_addr2", "_time_since_last"], inplace=True)
 
-    print(f"  Impossible travel flags: {df['impossible_travel'].sum():,} ({df['impossible_travel'].mean():.4%})")
+    logger.info(f"  Impossible travel flags: {df['impossible_travel'].sum():,} ({df['impossible_travel'].mean():.4%})")
     return df

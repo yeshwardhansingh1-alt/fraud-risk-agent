@@ -7,13 +7,17 @@ missed-fraud cost. Compute false-positive and missed-fraud cost on validation se
 "Honest metrics including false-positive cost" — this is the exact line from the bar.
 """
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 import json
 import os
 
 import sys
-sys.path.insert(0, os.path.dirname(__file__) + "/..")
+
 
 MODEL_DIR = os.path.dirname(__file__)
 FEATURES_DIR = os.path.join(os.path.dirname(__file__), "..", "features")
@@ -24,33 +28,24 @@ FEATURES_DIR = os.path.join(os.path.dirname(__file__), "..", "features")
 # Document every assumption inline — "assumption, tune with real data if available"
 # is an honest and completely fine thing to write.
 
-COST_CONFIG = {
-    # --- False Positive Costs (blocking a legitimate transaction) ---
+CONFIG_PATH = os.path.join(MODEL_DIR, "cost_config.json")
 
-    # Friction cost: customer frustration, checkout abandonment.
-    # Assumption: average lost revenue per false positive = $25.
-    # Real-world: varies by merchant (e-commerce ~2-5% of basket, travel ~$50+).
-    # Tune with real data if available.
-    "false_positive_friction_cost": 25.0,
+def load_cost_config():
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, "r") as f:
+            return json.load(f)
+    return {
+        "false_positive_friction_cost": 25.0,
+        "lost_revenue_fraction": 0.80,
+        "chargeback_fee": 25.0,
+        "fraud_loss_fraction": 1.0,
+        "step_up_leakage_rate": 0.25,
+        "step_up_friction_cost": 5.0,
+        "dispute_processing_fee": 10.0,
+        "threshold": 0.5,
+    }
 
-    # Lost legitimate revenue: the transaction amount itself is lost.
-    # We'll use a fraction of the transaction amount.
-    # Assumption: 80% of the transaction value is lost (some customers retry).
-    "lost_revenue_fraction": 0.80,
-
-    # --- Missed Fraud Costs (approving a fraudulent transaction) ---
-
-    # Chargeback fee: flat fee charged by the card network.
-    # Assumption: $25 per chargeback (industry standard: $15-$100).
-    "chargeback_fee": 25.0,
-
-    # Penalty/margin loss: the full transaction amount is lost.
-    # Assumption: 100% of the transaction amount.
-    "fraud_loss_fraction": 1.0,
-
-    # --- Decision threshold ---
-    "threshold": 0.5,
-}
+COST_CONFIG = load_cost_config()
 
 
 def compute_costs(df, y_true, y_pred_proba, config=None):
@@ -137,55 +132,74 @@ def compute_costs(df, y_true, y_pred_proba, config=None):
     return results
 
 
+def find_optimal_threshold(df, y_true, y_pred_proba, config=None):
+    """Sweep thresholds from 0.05 to 0.95 to find the one that minimizes total cost."""
+    if config is None:
+        config = COST_CONFIG.copy()
+        
+    best_threshold = 0.5
+    min_cost = float("inf")
+    
+    logger.info("\nSweeping thresholds 0.05 -> 0.95...")
+    for t in np.arange(0.05, 0.96, 0.01):
+        config["threshold"] = float(t)
+        res = compute_costs(df, y_true, y_pred_proba, config)
+        if res["total_cost"] < min_cost:
+            min_cost = res["total_cost"]
+            best_threshold = float(t)
+            
+    return best_threshold
+
+
 def print_cost_report(results):
     """Pretty-print the cost report."""
-    print("\n" + "=" * 60)
-    print("COST-AWARE METRICS REPORT")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("COST-AWARE METRICS REPORT")
+    logger.info("=" * 60)
 
-    print(f"\nThreshold: {results['threshold']}")
-    print(f"Transactions: {results['n_transactions']:,}")
-    print(f"Actual fraud: {results['n_fraud']:,}")
-    print(f"Predicted fraud: {results['n_predicted_fraud']:,}")
+    logger.info(f"\nThreshold: {results['threshold']}")
+    logger.info(f"Transactions: {results['n_transactions']:,}")
+    logger.info(f"Actual fraud: {results['n_fraud']:,}")
+    logger.info(f"Predicted fraud: {results['n_predicted_fraud']:,}")
 
-    print(f"\nPrecision: {results['precision']:.4f}")
-    print(f"Recall:    {results['recall']:.4f}")
+    logger.info(f"\nPrecision: {results['precision']:.4f}")
+    logger.info(f"Recall:    {results['recall']:.4f}")
 
-    print(f"\n--- False Positive Costs (blocking legitimate transactions) ---")
-    print(f"  False positives:    {results['false_positives']:,}")
-    print(f"  Friction cost:      ${results['fp_friction_cost']:,.2f}")
-    print(f"  Lost revenue:       ${results['fp_lost_revenue']:,.2f}")
-    print(f"  TOTAL FP cost:      ${results['total_false_positive_cost']:,.2f}")
+    logger.info(f"\n--- False Positive Costs (blocking legitimate transactions) ---")
+    logger.info(f"  False positives:    {results['false_positives']:,}")
+    logger.info(f"  Friction cost:      ${results['fp_friction_cost']:,.2f}")
+    logger.info(f"  Lost revenue:       ${results['fp_lost_revenue']:,.2f}")
+    logger.info(f"  TOTAL FP cost:      ${results['total_false_positive_cost']:,.2f}")
 
-    print(f"\n--- Missed Fraud Costs (approving fraudulent transactions) ---")
-    print(f"  False negatives:    {results['false_negatives']:,}")
-    print(f"  Chargeback fees:    ${results['fn_chargeback_fees']:,.2f}")
-    print(f"  Fraud loss:         ${results['fn_fraud_loss']:,.2f}")
-    print(f"  TOTAL missed cost:  ${results['total_missed_fraud_cost']:,.2f}")
+    logger.info(f"\n--- Missed Fraud Costs (approving fraudulent transactions) ---")
+    logger.info(f"  False negatives:    {results['false_negatives']:,}")
+    logger.info(f"  Chargeback fees:    ${results['fn_chargeback_fees']:,.2f}")
+    logger.info(f"  Fraud loss:         ${results['fn_fraud_loss']:,.2f}")
+    logger.info(f"  TOTAL missed cost:  ${results['total_missed_fraud_cost']:,.2f}")
 
-    print(f"\n--- Summary ---")
-    print(f"  Total cost:                ${results['total_cost']:,.2f}")
-    print(f"  Prevented fraud value:     ${results['prevented_fraud_value']:,.2f}")
-    print(f"  Net savings:               ${results['net_savings']:,.2f}")
-    print(f"  FP cost per 1,000 txn:     ${results['false_positive_cost_per_1000_txn']:,.2f}")
-    print(f"  Missed fraud per 1,000 txn: ${results['missed_fraud_cost_per_1000_txn']:,.2f}")
+    logger.info(f"\n--- Summary ---")
+    logger.info(f"  Total cost:                ${results['total_cost']:,.2f}")
+    logger.info(f"  Prevented fraud value:     ${results['prevented_fraud_value']:,.2f}")
+    logger.info(f"  Net savings:               ${results['net_savings']:,.2f}")
+    logger.info(f"  FP cost per 1,000 txn:     ${results['false_positive_cost_per_1000_txn']:,.2f}")
+    logger.info(f"  Missed fraud per 1,000 txn: ${results['missed_fraud_cost_per_1000_txn']:,.2f}")
 
-    print(f"\n--- Cost Assumptions (document inline) ---")
-    print(f"  Friction cost per FP:       ${COST_CONFIG['false_positive_friction_cost']}")
-    print(f"  Lost revenue fraction:      {COST_CONFIG['lost_revenue_fraction']:.0%}")
-    print(f"  Chargeback fee:             ${COST_CONFIG['chargeback_fee']}")
-    print(f"  Fraud loss fraction:         {COST_CONFIG['fraud_loss_fraction']:.0%}")
-    print(f"  Assumption: tune with real data if available.")
+    logger.info(f"\n--- Cost Assumptions (document inline) ---")
+    logger.info(f"  Friction cost per FP:       ${COST_CONFIG['false_positive_friction_cost']}")
+    logger.info(f"  Lost revenue fraction:      {COST_CONFIG['lost_revenue_fraction']:.0%}")
+    logger.info(f"  Chargeback fee:             ${COST_CONFIG['chargeback_fee']}")
+    logger.info(f"  Fraud loss fraction:         {COST_CONFIG['fraud_loss_fraction']:.0%}")
+    logger.info(f"  Assumption: tune with real data if available.")
 
-    print("=" * 60)
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":
     import joblib
 
     # Load data
-    print("Loading modeling table...")
-    df = pd.read_csv(os.path.join(FEATURES_DIR, "modeling_table.csv"))
+    logger.info("Loading modeling table...")
+    df = pd.read_parquet(os.path.join(FEATURES_DIR, "modeling_table.parquet"))
     df = df.sort_values("TransactionDT").reset_index(drop=True)
 
     # Load split info
@@ -205,6 +219,10 @@ if __name__ == "__main__":
     y_pred_proba = calibrated_model.predict_proba(val[feature_cols])[:, 1]
     y_true = val["isFraud"].values
 
+    optimal_threshold = find_optimal_threshold(val, y_true, y_pred_proba)
+    logger.info(f"Optimal cost-minimizing threshold: {optimal_threshold:.2f}")
+    COST_CONFIG["threshold"] = optimal_threshold
+
     # Compute costs
     results = compute_costs(val, y_true, y_pred_proba)
     print_cost_report(results)
@@ -216,5 +234,5 @@ if __name__ == "__main__":
     with open(os.path.join(MODEL_DIR, "cost_results.json"), "w") as f:
         json.dump(results, f, indent=2)
 
-    print(f"\nSaved cost config and results to model/")
-    print("Day 8 complete.")
+    logger.info(f"\nSaved cost config and results to model/")
+

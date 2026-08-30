@@ -5,6 +5,10 @@ Explores TransactionDT, identity columns for entity linking,
 fraud rate over time, transaction amount distributions.
 """
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -23,13 +27,13 @@ def load_merged():
 
 
 def explore_transaction_dt(df):
-    print("=" * 60)
-    print("TransactionDT Exploration")
-    print("=" * 60)
-    print(f"Min: {df['TransactionDT'].min()}")
-    print(f"Max: {df['TransactionDT'].max()}")
-    print(f"Range (days): {(df['TransactionDT'].max() - df['TransactionDT'].min()) / 86400:.1f}")
-    print(f"Sorted ascending: {df['TransactionDT'].is_monotonic_increasing}")
+    logger.info("=" * 60)
+    logger.info("TransactionDT Exploration")
+    logger.info("=" * 60)
+    logger.info(f"Min: {df['TransactionDT'].min()}")
+    logger.info(f"Max: {df['TransactionDT'].max()}")
+    logger.info(f"Range (days): {(df['TransactionDT'].max() - df['TransactionDT'].min()) / 86400:.1f}")
+    logger.info(f"Sorted ascending: {df['TransactionDT'].is_monotonic_increasing}")
 
     df["_day"] = (df["TransactionDT"] - df["TransactionDT"].min()) / 86400
     fig, axes = plt.subplots(2, 1, figsize=(14, 8))
@@ -47,17 +51,17 @@ def explore_transaction_dt(df):
     os.makedirs(PLOTS_DIR, exist_ok=True)
     plt.savefig(os.path.join(PLOTS_DIR, "fraud_rate_over_time.png"), dpi=150)
     plt.close()
-    print(f"Saved: plots/fraud_rate_over_time.png")
+    logger.info(f"Saved: plots/fraud_rate_over_time.png")
 
 
 def identify_identity_columns(df):
-    print("\n" + "=" * 60)
-    print("Identity Columns for Entity Linking")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("Identity Columns for Entity Linking")
+    logger.info("=" * 60)
     for col in ["card1","card2","card3","card4","card5","card6",
                 "addr1","addr2","P_emaildomain","R_emaildomain","DeviceType","DeviceInfo"]:
         if col in df.columns:
-            print(f"  {col:25s}  unique={df[col].nunique():>8,}  null={df[col].isnull().mean():6.2%}")
+            logger.info(f"  {col:25s}  unique={df[col].nunique():>8,}  null={df[col].isnull().mean():6.2%}")
 
 
 def plot_amount_distribution(df):
@@ -77,13 +81,13 @@ def plot_amount_distribution(df):
     os.makedirs(PLOTS_DIR, exist_ok=True)
     plt.savefig(os.path.join(PLOTS_DIR, "amount_distribution.png"), dpi=150)
     plt.close()
-    print(f"Saved: plots/amount_distribution.png")
+    logger.info(f"Saved: plots/amount_distribution.png")
 
 
 if __name__ == "__main__":
-    print("Loading data...")
+    logger.info("Loading data...")
     df = load_merged()
     explore_transaction_dt(df)
     identify_identity_columns(df)
     plot_amount_distribution(df)
-    print("\nDay 2 EDA complete.")
+

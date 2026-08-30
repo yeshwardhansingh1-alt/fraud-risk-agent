@@ -7,6 +7,10 @@ Recompute false-positive cost and missed-fraud cost.
 This is literally "measured precision and recall on a held-out test set."
 """
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
@@ -22,7 +26,7 @@ import joblib
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(__file__) + "/..")
+
 from model.cost_model import compute_costs, print_cost_report, COST_CONFIG
 
 MODEL_DIR = os.path.dirname(__file__)
@@ -32,7 +36,7 @@ PLOTS_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
 def verify_no_leakage(train, val, test):
     """Confirm train/val/test are strictly time-ordered with no overlap."""
-    print("Verifying chronological ordering...")
+    logger.info("Verifying chronological ordering...")
 
     train_max = train["TransactionDT"].max()
     val_min = val["TransactionDT"].min()
@@ -42,10 +46,10 @@ def verify_no_leakage(train, val, test):
     assert train_max <= val_min, f"LEAKAGE: train max ({train_max}) > val min ({val_min})"
     assert val_max <= test_min, f"LEAKAGE: val max ({val_max}) > test min ({test_min})"
 
-    print(f"  [OK] Train: TransactionDT [{train['TransactionDT'].min():.0f}, {train_max:.0f}]")
-    print(f"  [OK] Val:   TransactionDT [{val_min:.0f}, {val_max:.0f}]")
-    print(f"  [OK] Test:  TransactionDT [{test_min:.0f}, {test['TransactionDT'].max():.0f}]")
-    print(f"  [OK] No time leakage detected.")
+    logger.info(f"  [OK] Train: TransactionDT [{train['TransactionDT'].min():.0f}, {train_max:.0f}]")
+    logger.info(f"  [OK] Val:   TransactionDT [{val_min:.0f}, {val_max:.0f}]")
+    logger.info(f"  [OK] Test:  TransactionDT [{test_min:.0f}, {test['TransactionDT'].max():.0f}]")
+    logger.info(f"  [OK] No time leakage detected.")
 
 
 def full_evaluation(y_true, y_pred_proba, threshold=0.5):
@@ -73,7 +77,7 @@ def full_evaluation(y_true, y_pred_proba, threshold=0.5):
     return metrics
 
 
-def plot_evaluation_charts(y_true, y_pred_proba, save_dir):
+def plot_evaluation_charts(y_true, y_pred_proba, save_dir, threshold=0.5):
     """Plot ROC curve, PR curve, and score distribution."""
     os.makedirs(save_dir, exist_ok=True)
 
@@ -104,7 +108,7 @@ def plot_evaluation_charts(y_true, y_pred_proba, save_dir):
     legit_scores = y_pred_proba[y_true == 0]
     axes[2].hist(legit_scores, bins=50, alpha=0.5, color="#2196F3", label="Legit", density=True)
     axes[2].hist(fraud_scores, bins=50, alpha=0.5, color="#F44336", label="Fraud", density=True)
-    axes[2].axvline(0.5, color="black", linestyle="--", label="Threshold=0.5")
+    axes[2].axvline(threshold, color="black", linestyle="--", label=f"Threshold={threshold:.2f}")
     axes[2].set_xlabel("Predicted Fraud Probability")
     axes[2].set_ylabel("Density")
     axes[2].set_title("Score Distribution")
@@ -113,13 +117,13 @@ def plot_evaluation_charts(y_true, y_pred_proba, save_dir):
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, "evaluation_charts.png"), dpi=150)
     plt.close()
-    print(f"  Saved evaluation charts to: {save_dir}/evaluation_charts.png")
+    logger.info(f"  Saved evaluation charts to: {save_dir}/evaluation_charts.png")
 
 
 if __name__ == "__main__":
     # Load data
-    print("Loading modeling table...")
-    df = pd.read_csv(os.path.join(FEATURES_DIR, "modeling_table.csv"))
+    logger.info("Loading modeling table...")
+    df = pd.read_parquet(os.path.join(FEATURES_DIR, "modeling_table.parquet"))
     df = df.sort_values("TransactionDT").reset_index(drop=True)
 
     with open(os.path.join(MODEL_DIR, "feature_cols.json")) as f:
@@ -141,27 +145,32 @@ if __name__ == "__main__":
     calibrated_model = joblib.load(os.path.join(MODEL_DIR, "calibrated_model.pkl"))
 
     # Predict on held-out test set
-    print("\nPredicting on held-out test set...")
+    logger.info("\nPredicting on held-out test set...")
     y_true = test["isFraud"].values
     y_pred_proba = calibrated_model.predict_proba(test[feature_cols])[:, 1]
 
-    # Full evaluation metrics
-    metrics = full_evaluation(y_true, y_pred_proba)
+    # Load cost config
+    with open(os.path.join(MODEL_DIR, "cost_config.json")) as f:
+        cost_config = json.load(f)
+    threshold = cost_config.get("threshold", 0.5)
 
-    print("\n" + "=" * 60)
-    print("HELD-OUT TEST SET RESULTS")
-    print("=" * 60)
-    print(f"  Precision: {metrics['precision']:.4f}")
-    print(f"  Recall:    {metrics['recall']:.4f}")
-    print(f"  ROC-AUC:   {metrics['roc_auc']:.4f}")
-    print(f"  PR-AUC:    {metrics['pr_auc']:.4f}")
-    print(f"\n  True Positives:  {metrics['true_positives']:,}")
-    print(f"  False Positives: {metrics['false_positives']:,}")
-    print(f"  False Negatives: {metrics['false_negatives']:,}")
-    print(f"  True Negatives:  {metrics['true_negatives']:,}")
+    # Full evaluation metrics
+    metrics = full_evaluation(y_true, y_pred_proba, threshold=threshold)
+
+    logger.info("\n" + "=" * 60)
+    logger.info("HELD-OUT TEST SET RESULTS")
+    logger.info("=" * 60)
+    logger.info(f"  Precision: {metrics['precision']:.4f}")
+    logger.info(f"  Recall:    {metrics['recall']:.4f}")
+    logger.info(f"  ROC-AUC:   {metrics['roc_auc']:.4f}")
+    logger.info(f"  PR-AUC:    {metrics['pr_auc']:.4f}")
+    logger.info(f"\n  True Positives:  {metrics['true_positives']:,}")
+    logger.info(f"  False Positives: {metrics['false_positives']:,}")
+    logger.info(f"  False Negatives: {metrics['false_negatives']:,}")
+    logger.info(f"  True Negatives:  {metrics['true_negatives']:,}")
 
     # Cost-aware metrics (Day 8 recomputed on test set)
-    print("\n--- Cost-Aware Metrics on Test Set ---")
+    logger.info("\n--- Cost-Aware Metrics on Test Set ---")
     cost_results = compute_costs(test, y_true, y_pred_proba)
     print_cost_report(cost_results)
 
@@ -172,10 +181,10 @@ if __name__ == "__main__":
     }
     with open(os.path.join(MODEL_DIR, "backtest_results.json"), "w") as f:
         json.dump(all_results, f, indent=2)
-    print(f"\nSaved backtest results to: model/backtest_results.json")
+    logger.info(f"\nSaved backtest results to: model/backtest_results.json")
 
     # Plot evaluation charts
     os.makedirs(PLOTS_DIR, exist_ok=True)
-    plot_evaluation_charts(y_true, y_pred_proba, PLOTS_DIR)
+    plot_evaluation_charts(y_true, y_pred_proba, PLOTS_DIR, threshold=threshold)
 
-    print("\nDay 15 complete — this is 'measured precision and recall on a held-out test set.'")
+

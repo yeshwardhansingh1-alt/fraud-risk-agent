@@ -5,13 +5,17 @@ Transaction → calibrated probability → argmin action → structured JSON out
 JSON includes: action, probability, expected loss per action, top contributing features.
 """
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 import json
 import joblib
 import os
 import sys
-sys.path.insert(0, os.path.dirname(__file__) + "/..")
+
 from agent.expected_loss import argmin_action, expected_loss, ACTIONS
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "model")
@@ -97,7 +101,7 @@ def run_agent_on_dataset(calibrated_model, feature_cols, df, shap_explainer=None
 
     Returns list of decision dicts.
     """
-    print(f"Running decision agent on {len(df):,} transactions...")
+    logger.info(f"Running decision agent on {len(df):,} transactions...")
     decisions = []
 
     for idx, row in df.iterrows():
@@ -111,9 +115,9 @@ def run_agent_on_dataset(calibrated_model, feature_cols, df, shap_explainer=None
         decisions.append(decision)
 
         if len(decisions) % 10000 == 0:
-            print(f"  Processed {len(decisions):,} transactions...")
+            logger.info(f"  Processed {len(decisions):,} transactions...")
 
-    print(f"  Done. {len(decisions):,} decisions generated.")
+    logger.info(f"  Done. {len(decisions):,} decisions generated.")
     return decisions
 
 
@@ -122,21 +126,21 @@ def summarize_decisions(decisions):
     actions = [d["action"] for d in decisions]
     action_counts = pd.Series(actions).value_counts()
 
-    print("\n" + "=" * 60)
-    print("DECISION AGENT SUMMARY")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("DECISION AGENT SUMMARY")
+    logger.info("=" * 60)
     for action, count in action_counts.items():
         pct = count / len(decisions) * 100
-        print(f"  {action:15s}: {count:>8,} ({pct:.1f}%)")
+        logger.info(f"  {action:15s}: {count:>8,} ({pct:.1f}%)")
 
     avg_prob = np.mean([d["fraud_probability"] for d in decisions])
-    print(f"\n  Average fraud probability: {avg_prob:.4f}")
-    print("=" * 60)
+    logger.info(f"\n  Average fraud probability: {avg_prob:.4f}")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":
     # Load calibrated model
-    print("Loading calibrated model...")
+    logger.info("Loading calibrated model...")
     calibrated_model = joblib.load(os.path.join(MODEL_DIR, "calibrated_model.pkl"))
 
     with open(os.path.join(MODEL_DIR, "feature_cols.json")) as f:
@@ -145,8 +149,8 @@ if __name__ == "__main__":
         split_info = json.load(f)
 
     # Load test set
-    print("Loading test data...")
-    df = pd.read_csv(os.path.join(FEATURES_DIR, "modeling_table.csv"))
+    logger.info("Loading test data...")
+    df = pd.read_parquet(os.path.join(FEATURES_DIR, "modeling_table.parquet"))
     df = df.sort_values("TransactionDT").reset_index(drop=True)
     test = df.iloc[split_info["train_size"] + split_info["val_size"]:]
 
@@ -158,5 +162,5 @@ if __name__ == "__main__":
     out_path = os.path.join(os.path.dirname(__file__), "test_decisions.json")
     with open(out_path, "w") as f:
         json.dump(decisions, f, indent=2)
-    print(f"\nSaved {len(decisions):,} decisions to: {out_path}")
-    print("Day 10 complete.")
+    logger.info(f"\nSaved {len(decisions):,} decisions to: {out_path}")
+

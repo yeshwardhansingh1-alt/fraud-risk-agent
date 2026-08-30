@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fraud-risk-agent"
+version = "0.1.0"
+description = "Cost-sensitive fraud-spike detector"
+authors = [{name = "Antigravity"}]
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agent", "features", "model", "dashboard", "notebooks"]

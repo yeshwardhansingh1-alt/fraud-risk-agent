@@ -6,6 +6,10 @@ plot reliability diagram, compute Brier score.
 This is the P(Loss|X) engine.
 """
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
@@ -22,7 +26,7 @@ PLOTS_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
 
 import sys
-sys.path.insert(0, os.path.dirname(__file__) + "/..")
+
 from model.wrappers import LGBMWrapper, CustomCalibratedClassifier
 
 
@@ -32,7 +36,7 @@ def calibrate_model(model_wrapper, X_val, y_val):
     """
     Calibrate the model using isotonic regression on the validation set.
     """
-    print("Calibrating model (isotonic regression)...")
+    logger.info("Calibrating model (isotonic regression)...")
     calibrated = CustomCalibratedClassifier(model_wrapper)
     calibrated.fit(X_val, y_val)
     return calibrated
@@ -62,13 +66,13 @@ def plot_reliability_diagram(y_true, y_pred_uncal, y_pred_cal, save_path):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.savefig(save_path, dpi=150)
     plt.close()
-    print(f"  Saved reliability diagram: {save_path}")
+    logger.info(f"  Saved reliability diagram: {save_path}")
 
 
 if __name__ == "__main__":
     # Load data
-    print("Loading modeling table...")
-    df = pd.read_csv(os.path.join(FEATURES_DIR, "modeling_table.csv"))
+    logger.info("Loading modeling table...")
+    df = pd.read_parquet(os.path.join(FEATURES_DIR, "modeling_table.parquet"))
     df = df.sort_values("TransactionDT").reset_index(drop=True)
 
     # Load model and feature cols
@@ -98,7 +102,7 @@ if __name__ == "__main__":
 
     # Brier score before calibration
     brier_before = brier_score_loss(y_test, y_pred_uncal_test)
-    print(f"\nBrier score BEFORE calibration: {brier_before:.6f}")
+    logger.info(f"\nBrier score BEFORE calibration: {brier_before:.6f}")
 
     # Calibrate
     model_wrapper = LGBMWrapper(booster, feature_cols)
@@ -110,8 +114,8 @@ if __name__ == "__main__":
 
     # Brier score after calibration
     brier_after = brier_score_loss(y_test, y_pred_cal_test)
-    print(f"Brier score AFTER calibration:  {brier_after:.6f}")
-    print(f"Improvement: {(brier_before - brier_after) / brier_before:.2%}")
+    logger.info(f"Brier score AFTER calibration:  {brier_after:.6f}")
+    logger.info(f"Improvement: {(brier_before - brier_after) / brier_before:.2%}")
 
     # Reliability diagram
     os.makedirs(PLOTS_DIR, exist_ok=True)
@@ -123,7 +127,7 @@ if __name__ == "__main__":
     # Save calibrated model
     cal_model_path = os.path.join(MODEL_DIR, "calibrated_model.pkl")
     joblib.dump(calibrated_model, cal_model_path)
-    print(f"\nCalibrated model saved to: {cal_model_path}")
+    logger.info(f"\nCalibrated model saved to: {cal_model_path}")
 
     # Save calibration metrics
     cal_metrics = {
@@ -134,4 +138,4 @@ if __name__ == "__main__":
     with open(os.path.join(MODEL_DIR, "calibration_metrics.json"), "w") as f:
         json.dump(cal_metrics, f, indent=2)
 
-    print("\nDay 7 complete — calibrated model is the P(Loss|X) engine.")
+
