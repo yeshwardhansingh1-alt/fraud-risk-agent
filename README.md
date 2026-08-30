@@ -131,8 +131,8 @@ Based on the chronological hold-out test set (118,108 transactions):
 | PR-AUC | 0.4530 |
 | FP Cost per 1,000 txn | $314.10 |
 | Missed Fraud Cost per 1,000 txn | $4,772.71 |
-| Net Savings (over approve-all) | $110,742.38 |
-| NFI Improvement (ML vs Rules) | $6,356,010.56 (out of ~$15.8M total test volume) |
+| Net Savings (over approve-all) | $369,395.18 (Agent Logic) |
+| NFI Improvement (Agent vs Rules) | $6,614,663.36 (out of ~$15.8M total test volume) |
 | p99 Latency (Inference) | < 15ms |
 
 ### Cost Assumptions (documented inline)
