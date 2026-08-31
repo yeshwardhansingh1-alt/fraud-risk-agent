@@ -1,123 +1,57 @@
 # Fraud Risk Agent
 
-A cost-sensitive fraud-spike detector built for **Razorpay's AI Buildathon (Track 02: AI Risk Manager)**. The system flags fraudulent card-not-present transactions using a calibrated LightGBM model with honest, auditable metrics — including false-positive cost measured in real dollar terms — evaluated on a strict chronological hold-out set. Every flagged transaction ships with a SHAP-based reason code explaining *why* it was flagged, not just a score. **Purely defensive**: it detects and explains fraud, it does not help commit it.
+A real-time, event-driven fraud risk manager built for **Razorpay's AI Buildathon (Track 02: AI Risk Manager)**. The system processes incoming transaction streams using Redis and a calibrated LightGBM model with honest, auditable metrics — including false-positive cost measured in real dollar terms. Every flagged transaction ships with a SHAP-based reason code explaining *why* it was flagged, not just a score, and uses a state-machine circuit breaker to prevent catastrophic fails.
 
-## Problem
+**Purely defensive**: it detects and explains fraud, it does not help commit it.
 
-Online fraud costs merchants billions annually through chargebacks, lost revenue, and friction. But blocking too aggressively is equally expensive — false positives frustrate legitimate customers and destroy revenue. Most fraud detectors optimize for accuracy alone, ignoring the asymmetric cost structure. This project builds a system that:
+## Track 02 Bar: Requirements Mapped
 
-1. **Detects fraud** with a calibrated probability (not just a binary flag)
-2. **Minimizes expected loss** across 4 actions: Approve, Step-Up (3DS), Block, Auto-Dispute
-3. **Reports honest metrics** including false-positive cost per 1,000 transactions
-4. **Explains every decision** with SHAP feature attribution
+- **Honest Metrics**: Cost-Sensitive Net Financial Impact (NFI) optimizer considers True Positive savings against Merchant Friction / Chargeback penalties.
+- **Explainable & Bounded**: Native TreeSHAP integration for real-time reason codes. Tiered actions (Pass / Step-Up / Block) gated by precise threshold optimization.
+- **Failures Handled Gracefully**: A 5-minute rolling Circuit Breaker monitors the block rate. If the ML goes haywire and block rate exceeds 8%, it falls back to a fail-open policy (`ACTION_STEP_UP`) and alerts `CIRCUIT_BREAKER_TRIPPED_SYSTEM_FAILSAFE`.
+- **Auto-Responder**: Dynamic chargeback evidence generator compiles the transaction state, SHAP vectors, and velocity aggregations into a "Representment Package" for merchants.
 
-## Approach
+## Architecture (Phase 3 Upgrade)
 
-### Data & Features
-- **Dataset**: IEEE-CIS Fraud Detection (Kaggle) — 590K+ transactions with real timestamps, device/email/card identity columns
-- **Validation**: Strict schema validation on ingestion via **Pandera**.
-- **Storage**: Fully migrated to **Parquet** for ~10x faster I/O and heavily compressed disk footprint.
-- **Velocity features**: Rolling transaction counts per card/device in 10min, 1hr, 24hr windows
-- **Entity graph features**: Cards sharing the same device/email/address (fraud ring detection)
-- **Behavioral features**: Amount z-score vs. card's own history, "impossible travel" flag
-
-### Model
-- **LightGBM** classifier trained on a **strict chronological split** (no random shuffling).
-- **Hyperparameter Tuning**: Bayesian optimization via **Optuna** built into the training pipeline.
-- **Multi-Model Comparison**: Includes an XGBoost baseline script for metric auditing.
-- **Isotonic calibration** via `CalibratedClassifierCV` — this is the P(Loss|X) engine
-- Brier score improvement confirms calibration works
-
-### Decision Agent (Stretch)
-- **Expected-loss minimization**: E[Loss(a|X)] = p_fraud × CFraud(a,V) + (1−p_fraud) × CLegit(a,V)
-- **Key subtlety**: CFraud(a,V) varies by action — full V+fees under Approve, ~0 under Block, 5% residual leakage under Step-Up. If CFraud is flat, the optimum collapses to "always Approve."
-- 4 actions: Approve, Step-Up, Block, Auto-Dispute
-- **Real-Time Streaming**: Includes a mock Redis Stream consumer (`streaming_consumer.py`) for stateful, real-time event scoring.
-- **Monitoring**: Built-in Population Stability Index (PSI) hooks to detect feature and prediction distribution drift in production.
-
-### Explainability & API
-- **Native LightGBM SHAP feature attribution** (no external heavy C-dependencies needed) on every flagged transaction
-- Top 3-5 contributing features with direction and magnitude
-- "Decision receipt" per transaction: `"Step-Up chosen: E[loss|approve]=$46 vs E[loss|step-up]=$3"`
-- **Secure API**: FastAPI endpoints protected by API Key authentication, `slowapi` rate limiting, and strict CORS. Supports both single `/predict` and bulk `/predict_batch`.
-
-## Architecture
+We've migrated from a batch Pandas/Kaggle script to an enterprise-grade streaming architecture:
 
 ```mermaid
 flowchart TD
-    %% Data Flow
-    subgraph Data Pipeline
-        raw_csv[(Kaggle CSVs)]
-        features([build_features.py])
-        mod_tbl[(modeling_table.csv)]
-        
-        raw_csv --> features
-        features -->|Velocity & Graph| mod_tbl
+    %% Streaming Event Ingestion
+    subgraph Event Gateway
+        mock_stream([Mock Stream Publisher])
+        fastapi([FastAPI /v1/risk/evaluate])
+        mock_stream --> fastapi
     end
 
-    %% Training Pipeline
-    subgraph Model Training
-        train([train.py])
-        calib([calibrate.py])
-        cost_mod([cost_model.py])
-        lgbm[LightGBM Model]
-        iso[Isotonic Calibrator]
-        
-        mod_tbl --> train
-        train -->|Hyperopt| lgbm
-        mod_tbl --> calib
-        calib -->|Uses LGBM| iso
-        calib --> cost_mod
+    %% Real-Time Redis Feature Store
+    subgraph Feature Hydration
+        fastapi -->|Async XADD| redis_stream[(Redis Stream)]
+        redis_stream --> feature_hydrator[Redis Velocity Counters]
+        feature_hydrator -->|15m, 1h aggregates| hydrated_payload
     end
 
-    %% Inference Agent
-    subgraph Decision Agent
-        api([FastAPI Endpoint])
-        agent([Decision Logic])
-        cost_conf[(cost_config.json)]
-        
-        iso --> api
-        api -->|P_Fraud| agent
-        cost_conf --> agent
-        agent -->|Approve/Step-Up/Block| Output
+    %% Scoring & Policy
+    subgraph Decision Engine
+        hydrated_payload --> lgbm[LightGBM + TreeSHAP]
+        lgbm --> policy_engine[Bounded Policy + Circuit Breaker]
+        policy_engine --> |Pass/Step-Up/Block| action
     end
     
-    Data Pipeline --> Model Training
-    Model Training --> Decision Agent
+    %% Audit & Demo
+    subgraph Audit & Visualization
+        action --> sqlite[(SQLite Immutable WAL Ledger)]
+        sqlite --> streamlit[Streamlit Real-Time Dashboard]
+    end
 ```
 
-```
-fraud-risk-agent/
-├── data/                    # IEEE-CIS CSVs (gitignored)
-├── features/
-│   ├── velocity.py          # Rolling count features (Day 3)
-│   ├── entity_graph.py      # Graph-based features (Day 4)
-│   ├── behavioral.py        # Z-score, impossible travel (Day 4)
-│   └── build_features.py    # Merge all → modeling_table.csv
-├── model/
-│   ├── rule_engine.py       # Baseline hand-written rules (Day 5)
-│   ├── train.py             # LightGBM training (Day 6)
-│   ├── calibrate.py         # Isotonic calibration (Day 7)
-│   ├── cost_model.py        # Cost assumptions + computation (Day 8)
-│   ├── explain.py           # SHAP explainability (Days 12-13)
-│   ├── evaluate.py          # Chronological backtest (Day 15)
-│   └── net_financial_impact.py  # NFI comparison (Day 16)
-├── agent/
-│   ├── expected_loss.py     # E[Loss(a|X)] function (Day 9)
-│   ├── decision_agent.py    # 4-action policy wrapper (Day 10)
-│   ├── dispute_responder.py # Template dispute drafts (Day 11)
-│   ├── api.py               # FastAPI endpoint (Days 18-19)
-│   └── benchmark.py         # Latency benchmarking
-├── dashboard/
-│   └── app.py               # Streamlit dashboard (Days 22-25)
-├── notebooks/
-│   ├── 01_load_and_inspect.py
-│   ├── 02_eda.py
-│   └── 17_error_analysis.py
-├── plots/                   # Generated charts
-├── README.md
-└── requirements.txt
-```
+## Performance & Latency
+
+By utilizing in-memory LightGBM and Redis pipelines for feature hydration, the event loop remains unblocked.
+**Target**: < 50ms per transaction.
+**Actual**: See Locust Load Test below demonstrating p95 response times under 30ms for 100 concurrent users.
+
+![Locust Load Test](plots/locust_load_test.png)
 
 ## Key Results
 
@@ -133,40 +67,26 @@ Based on the chronological hold-out test set (118,108 transactions):
 | Missed Fraud Cost per 1,000 txn | $4,772.71 |
 | Net Savings (over approve-all) | $369,395.18 (Agent Logic) |
 | NFI Improvement (Agent vs Rules) | $6,614,663.36 (out of ~$15.8M total test volume) |
-| p99 Latency (Inference) | < 15ms |
+| p99 Latency (Inference) | < 30ms |
 
 ### Cost Assumptions (documented inline)
 - Chargeback fee: $25 per chargeback (industry standard $15–$100)
 - FP friction cost: $25 per false positive (checkout abandonment)
 - Lost revenue fraction: 80% of blocked transaction value
-- *Assumption: tune with real data if available*
 
 ## How to Run
 
 ```bash
-# 1. Setup
+# 1. Setup Python Env
 python -m venv venv
 venv\Scripts\activate  # Windows
-pip install -e .
+pip install -r requirements.txt
 
-# 2. Download data (requires Kaggle API credentials)
-kaggle competitions download -c ieee-fraud-detection -p data/
-# Extract CSVs into data/
+# 2. Start backend dependencies (Redis + FastAPI)
+docker-compose up -d
 
-# 3. Run Pipeline (using Makefile)
-make all
-
-# Note: 'make all' automates:
-# - build_features.py (Pandera schema checks -> Parquet)
-# - train.py (Optuna tuning -> LightGBM)
-# - calibrate.py (Isotonic Regression)
-# - rule_engine.py & evaluate.py & net_financial_impact.py
-
-# 4. Run the Live Demo Simulator (FastAPI)
-make serve
-# Or: uvicorn agent.api:app --host 127.0.0.1 --port 8000
-
-# 5. Visit http://localhost:8000/demo_ui in your browser to test live checkout transactions!
+# 3. Start the Real-Time Streamlit Dashboard
+streamlit run dashboard.py
 ```
 
 ## Defense-Only Policy
