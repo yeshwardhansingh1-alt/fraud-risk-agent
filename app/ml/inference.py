@@ -8,15 +8,13 @@ class RealTimeScorer:
         self.model = lgb.Booster(model_file=model_path)
         self.explainer = shap.TreeExplainer(self.model)
 
-    def predict_and_explain(self, feature_df: pd.DataFrame):
-        # 1. Fast Probability Scoring
-        prob = self.model.predict(feature_df)[0]
-        
-        # 2. Extract SHAP Local Vector
+    def predict(self, feature_df: pd.DataFrame) -> float:
+        return float(self.model.predict(feature_df)[0])
+
+    def explain(self, feature_df: pd.DataFrame) -> list:
         shap_values = self.explainer.shap_values(feature_df)
         
         if isinstance(shap_values, list):
-            # For multi-class/binary list outputs
             shap_values = shap_values[1]
             
         feature_names = feature_df.columns
@@ -31,4 +29,4 @@ class RealTimeScorer:
             for i in top_indices
         ]
         
-        return prob, reasons
+        return reasons
