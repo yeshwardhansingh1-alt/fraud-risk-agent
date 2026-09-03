@@ -17,10 +17,10 @@ evaluate:
 	python model/net_financial_impact.py
 
 serve:
-	python -m uvicorn agent.api:app --host 127.0.0.1 --port 8000
+	python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 dashboard:
-	streamlit run dashboard/app.py
+	streamlit run dashboard.py
 
 test:
 	pytest tests/
