@@ -1,12 +1,16 @@
 # Data files (too large for git)
-data/*.csv
-features/modeling_table.csv
-features/rule_engine_outputs.csv
-agent/test_decisions.json
-model/explanations.json
-data/*.zip
-data/*.parquet
-
+data/
+*.csv
+*.parquet
+*.json
+!model/cost_config.json
+!model/feature_cols.json
+!model/split_info.json
+!research/model/cost_config.json
+!research/model/feature_cols.json
+!research/model/split_info.json
+!app/**/*.json
+!metrics/**/*.json
 # Python
 __pycache__/
 *.py[cod]
@@ -33,16 +37,16 @@ env/
 Thumbs.db
 
 # Model artifacts
-model/*.pkl
-model/*.joblib
-model/*.txt
-model/*.json
+*.pkl
+*.joblib
+*.txt
+!requirements.txt
 !model/cost_config.json
 !model/feature_cols.json
 !model/split_info.json
 
 # Plots
-plots/*.png
+*.png
 
 # Logs
 *.log
